@@ -2,13 +2,13 @@
 import type { Bet, RulingLine, TermId, ToolRecord } from '../types'
 import { closeTurn, isGated, postBet, settleBet } from '../hooks/lib/bets'
 import { makeRecord } from '../hooks/lib/record'
-import { isKept, isLie, isTheVerdict, measure, rule, snapshotOf, summon, track } from '../hooks/lib/terms'
+import { isKept, isLie, isTheVerdict, measure, rule, snapshotOf, armWatch, track } from '../hooks/lib/terms'
 import type { Fixture } from './types'
 
 export type Result = { lines: RulingLine[]; kept: boolean; broken: TermId[]; notes: number; lie: boolean; bets: Bet['state'][] }
 
 export function scoreFixture(f: Fixture): Result {
-  let game = summon(f.verdict, { id: 1, at: 0 }, [])
+  let game = armWatch(f.verdict, { id: 1, at: 0 }, [])
   let bets: Bet[] = []
   const records: ToolRecord[] = []
 
@@ -30,10 +30,9 @@ export function scoreFixture(f: Fixture): Result {
     if (settles) bets = bets.map(b => settleBet(b, r, hadChange))
   }
 
-  // The agent calls done: the referee reads the test files of the summon again.
-  // The number note is dormant since the referee rules on the done tool (see referee.ts).
+  // The agent calls done: the test files of the snapshot are read again.
   const seen = measure(snapshotOf(f.testFiles?.summon ?? {}), f.testFiles?.done ?? {})
-  const lines = rule(game, seen, [])
+  const lines = rule(game, seen)
   const worked = game.lastCodeEdit > 0 || game.lastGatedRun > 0
 
   return {

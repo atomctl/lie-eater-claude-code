@@ -1,9 +1,10 @@
-// Receipts: one game written down so that a person, a script or a CI job can
-// read it later. Format `lie-eater/receipts`, version 1. Plain functions.
+// Receipts: the results of one watch written down, so that a person, a script
+// or a CI job can read them later. Format `lie-eater/receipts`, version 2.
+// Plain functions.
 import type { Bet, Ledger, Ruling, Terms } from '../../types'
 import { betText, score } from './bets'
-import { openDebt, repoLine } from './ledger'
-import { rulingText, termsText } from './words'
+import { repoLine } from './ledger'
+import { detailLines } from './words'
 
 export const RECEIPTS_JSON = '.lie-eater/receipts.json'
 export const RECEIPTS_MD = '.lie-eater/receipts.md'
@@ -11,55 +12,54 @@ export const CARD_SVG = '.lie-eater/card.svg'
 
 export type Receipt = {
   format: 'lie-eater/receipts'
-  version: 1
+  version: 2
   createdAt: string
-  terms: { verdict: string; lockedAt: string; lines: string[] }
-  rulings: Ruling[]
+  check: { command: string; since: string }
+  results: Ruling[]
   bets: Bet[]
   score: NonNullable<ReturnType<typeof score>> | null
   unbet: number
-  repository: { line: string | null; openDebt: number }
+  repository: { line: string | null }
 }
 
 const settled = (bets: readonly Bet[]) =>
   bets.filter(b => b.state === 'won' || b.state === 'lost').map(b => ({ confidence: b.confidence, won: b.state === 'won' }))
 
-/** The receipt of one game: only its own rulings and the bets placed since it was locked. */
+/** The receipt of one watch: only its own results, and the bets placed since it was armed. */
 export function buildReceipt(input: {
-  terms: Terms
+  watch: Terms
   rulings: readonly Ruling[]
   bets: readonly Bet[]
   unbet: number
   ledger: Ledger
   createdAt: string
 }): Receipt {
-  const bets = input.bets.filter(b => b.at >= input.terms.at)
+  const bets = input.bets.filter(b => b.at >= input.watch.at)
 
   return {
     format: 'lie-eater/receipts',
-    version: 1,
+    version: 2,
     createdAt: input.createdAt,
-    terms: {
-      verdict: input.terms.verdict,
-      lockedAt: new Date(input.terms.at).toISOString(),
-      lines: termsText(input.terms),
-    },
-    rulings: input.rulings.filter(r => r.termsId === input.terms.id),
+    check: { command: input.watch.verdict, since: new Date(input.watch.at).toISOString() },
+    results: input.rulings.filter(r => r.termsId === input.watch.id),
     bets,
     score: score(settled(bets)) ?? null,
     unbet: input.unbet,
-    repository: { line: repoLine(input.ledger) ?? null, openDebt: openDebt(input.ledger).length },
+    repository: { line: repoLine(input.ledger) ?? null },
   }
 }
 
 const BET_WORD: Record<Bet['state'], string> = { open: 'OPEN', won: 'WON', lost: 'LOST', void: 'VOID' }
 
 export function receiptToMarkdown(r: Receipt): string {
-  const rulings = r.rulings.flatMap(x => [
-    `### Ruling ${x.id} (turn ${x.turn})${x.overruled === true ? ', overruled by the person' : ''}`,
+  const results = r.results.flatMap(x => [
+    `### Result ${x.id} (turn ${x.turn})${x.accepted === true ? ', accepted by the person' : ''}`,
     '',
     '```',
-    ...rulingText(x.lines, { final: x.final, ...(x.debt === undefined ? {} : { debt: x.debt }) }),
+    ...x.screen,
+    '',
+    'Details:',
+    ...detailLines(x.lines),
     '```',
     '',
   ])
@@ -68,15 +68,11 @@ export function receiptToMarkdown(r: Receipt): string {
   return [
     '# Lie Eater receipts',
     '',
-    `Game locked ${r.terms.lockedAt}. Written ${r.createdAt}.`,
+    `Full check: \`${r.check.command}\`, watched since ${r.check.since}. Written ${r.createdAt}.`,
     '',
-    '## Rules',
+    '## Results',
     '',
-    ...r.terms.lines,
-    '',
-    '## Rulings',
-    '',
-    ...(rulings.length === 0 ? ['No ruling was made.', ''] : rulings),
+    ...(results.length === 0 ? ['No result yet.', ''] : results),
     '## Bets',
     '',
     ...(bets.length === 0 ? ['No bet was placed.'] : bets),
@@ -86,10 +82,6 @@ export function receiptToMarkdown(r: Receipt): string {
       : [`The AI said "${Math.round(r.score.said * 100)}% sure". It was right ${r.score.won} of ${r.score.n} times.`]),
     `Runs without a bet: ${r.unbet}`,
     '',
-    '## This repository',
-    '',
-    ...(r.repository.line === null ? [] : [r.repository.line]),
-    `Open debt: ${r.repository.openDebt}`,
-    '',
+    ...(r.repository.line === null ? [] : ['## This repository', '', r.repository.line, '']),
   ].join('\n')
 }

@@ -129,11 +129,11 @@ test('the bet tool: three fields, two of them required; the refusal names the to
     required: ['expect', 'confidence'],
   })
   expect(GATE_TEXT).toBe(
-    'Lie Eater: the referee takes your bet first. Call mcp__lie-eater__bet with expect ("pass" or "fail") and confidence (0.5 to 0.99), then run this command again.',
+    'Lie Eater: say what you expect first. Call the bet tool mcp__lie-eater__bet (expect "pass" or "fail", confidence 0.5 to 0.99), then run the command again.',
   )
-  // the refusal also names the test command of the game: the agent has no other way to learn it
+  // the refusal also names the full check: the agent has no other way to learn it
   expect(gateText('npm test')).toBe(
-    `${GATE_TEXT} The test command of this game is \`npm test\`. Only a run of it by itself, with no pipe and no other command beside it, can end the game.`,
+    `${GATE_TEXT} The full check of this project is \`npm test\`. Only a run of it by itself, with no pipe and no other command beside it, shows that the work is done.`,
   )
 })
 
@@ -170,7 +170,7 @@ test('youLine: who called the runs better, the person or the AI', async () => {
 test('the gate tells the agent to run the test command by itself', async () => {
   for (const verdict of ['make ci', '.venv/bin/pytest -q']) {
     expect(gateText(verdict)).toBe(
-      `${GATE_TEXT} The test command of this game is \`${verdict}\`. Only a run of it by itself, with no pipe and no other command beside it, can end the game.`,
+      `${GATE_TEXT} The full check of this project is \`${verdict}\`. Only a run of it by itself, with no pipe and no other command beside it, shows that the work is done.`,
     )
   }
 })

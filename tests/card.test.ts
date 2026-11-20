@@ -3,112 +3,82 @@ import { expect, test } from 'claude-code/testing'
 import { cardSvg } from '../hooks/lib/card'
 import { EMPTY_LEDGER } from '../hooks/lib/ledger'
 import { buildReceipt } from '../hooks/lib/receipts'
-import { rule, summon, track } from '../hooks/lib/terms'
+import { resultOf } from '../hooks/lib/result'
+import { armWatch, rule, track } from '../hooks/lib/terms'
 import type { Bet, Ruling, Terms } from '../types'
 import { rec } from './helpers'
 
 const NOW = '2026-11-20T12:00:00.000Z'
 const play = (verdict: string, state: 'clean' | 'failed' | 'unknown'): Terms =>
-  [rec({ id: 3, kind: 'test', target: verdict, state })].reduce(track, summon(verdict, { id: 1, at: 5000 }, []))
-const ruling = (game: Terms, more: Partial<Ruling> = {}): Ruling => {
-  const lines = rule(game, { net: {}, gone: [] }, [])
+  [rec({ id: 3, kind: 'test', target: verdict, state })].reduce(track, armWatch(verdict, { id: 1, at: 5000 }, []))
+const ruling = (watch: Terms, more: Partial<Ruling> = {}): Ruling => {
+  const lines = rule(watch, { net: {}, gone: [] })
 
-  return {
-    id: 1,
-    termsId: 1,
-    turn: 1,
-    at: 6000,
-    lines,
-    met: lines.every(l => l.pass),
-    fromNowhere: [],
-    saidDone: true,
-    final: true,
-    lie: false,
-    ...more,
-  }
+  return { id: 1, termsId: 1, turn: 1, at: 6000, lines, ...resultOf(lines, '', true), lie: false, ...more }
 }
-const bet = (id: number, state: Bet['state']): Bet => ({
-  id,
-  turn: 1,
-  at: 5500,
-  afterRecord: 0,
-  expect: 'pass',
-  confidence: 0.9,
-  why: '',
-  state,
-})
-const card = (game: Terms, r: Ruling, bets: Bet[] = []) =>
-  cardSvg(buildReceipt({ terms: game, rulings: [r], bets, unbet: 0, ledger: EMPTY_LEDGER, createdAt: NOW }), {
-    referee: 73,
-    streak: 2,
-  })
+const bet = (id: number, state: Bet['state']): Bet => ({ id, turn: 1, at: 5500, afterRecord: 0, expect: 'pass', confidence: 0.9, why: '', state })
+const card = (watch: Terms, r: Ruling, bets: Bet[] = []) =>
+  cardSvg(buildReceipt({ watch, rulings: [r], bets, unbet: 0, ledger: EMPTY_LEDGER, createdAt: NOW }))
+const shows = (svg: string, text: string) => `${text}: ${svg.includes(text.replaceAll('"', '&quot;'))}`
 
-test('the card of a kept game', async () => {
-  const game = play('npm test', 'clean')
-  const svg = card(game, ruling(game), [bet(1, 'won'), bet(2, 'won'), bet(3, 'lost')])
+test('the card of a checked result: the three lines, the evidence, the bets', async () => {
+  const watch = play('npm test', 'clean')
+  const svg = card(watch, ruling(watch), [bet(1, 'won'), bet(2, 'won'), bet(3, 'lost')])
 
   expect(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')).toBe(true)
   expect(svg.trimEnd().endsWith('</svg>')).toBe(true)
   for (const text of [
     'LIE EATER',
-    'Referee No. 73',
-    'RULES KEPT',
-    'npm test',
-    '2026-11-20',
+    '✓ checked',
+    'The checks passed after the last change.',
+    'None was removed or switched off.',
+    'npm test · 2026-11-20',
     'The tests really pass',
-    'No check was removed from a test',
-    'No test was deleted',
     'No test was switched off',
     'The AI said "90% sure". It was right 2 of 3 times.',
-    'Clean games in a row: 2',
-    'Make your AI bet on its own code.',
+    'Lie Eater checks the proof before you believe it.',
   ]) {
-    expect(`${text}: ${svg.includes(text.replaceAll('"', '&quot;'))}`).toBe(`${text}: true`)
+    expect(shows(svg, text)).toBe(`${text}: true`)
   }
-  expect(svg).not.toContain('RULES BROKEN')
 })
 
-test('the card of a broken game, with no bets', async () => {
-  const game = play('npm test', 'failed')
-  const svg = card(game, ruling(game))
+test('the card of a red result, with no bets', async () => {
+  const watch = play('npm test', 'failed')
+  const svg = card(watch, ruling(watch))
 
-  expect(svg).toContain('RULES BROKEN')
-  expect(svg).toContain('The tests fail')
+  expect(svg).toContain("✗ don't trust &quot;done&quot;")
+  expect(svg).toContain('The checks fail.')
   expect(svg).toContain('No bet was placed.')
-  expect(svg).not.toContain('RULES KEPT')
+  expect(svg).not.toContain('✓ checked')
 })
 
-test('an overruled game says so on its card', async () => {
-  const game = play('npm test', 'failed')
+test('an accepted change says so on its card', async () => {
+  const watch = play('npm test', 'failed')
 
-  expect(card(game, ruling(game, { overruled: true }))).toContain('OVERRULED BY THE PERSON')
+  expect(card(watch, ruling(watch, { accepted: true }))).toContain('You accepted this change.')
 })
 
 test('the card escapes the text it shows', async () => {
-  const game = play('make test && echo <ok>', 'clean')
-  const svg = card(game, ruling(game))
+  const watch = play('make test && echo <ok>', 'clean')
+  const svg = card(watch, ruling(watch))
 
   expect(svg).toContain('make test &amp;&amp; echo &lt;ok&gt;')
   expect(svg).not.toContain('<ok>')
 })
 
-test('a card with no referee number and no finished game before it', async () => {
-  const game = play('npm test', 'clean')
-  const svg = cardSvg(
-    buildReceipt({ terms: game, rulings: [ruling(game)], bets: [], unbet: 0, ledger: EMPTY_LEDGER, createdAt: NOW }),
-    { streak: 0 },
-  )
+test('the card keeps an empty place for a character, and shows no face', async () => {
+  const watch = play('npm test', 'clean')
+  const svg = card(watch, ruling(watch))
 
-  expect(svg).not.toContain('Referee No.')
-  expect(svg).not.toContain('Clean games in a row')
+  expect(svg).toContain('<g id="character"')
+  expect(svg).not.toMatch(/\(\^_\^\)|\(-_-\)|Referee/)
 })
 
-test('the card of a game the referee could not read says "not proven", not "broken"', async () => {
-  const game = play('npm test', 'unknown')
-  const svg = card(game, ruling(game))
+test('the card of a run that could not be read says "not checked"', async () => {
+  const watch = play('npm test', 'unknown')
+  const svg = card(watch, ruling(watch))
 
-  expect(svg).toContain('NOT PROVEN')
-  expect(svg).toContain('The referee could not read the test run')
-  expect(svg).not.toContain('RULES BROKEN')
+  expect(svg).toContain('? not checked')
+  expect(svg).toContain('The result of the test run could not be read')
   expect(svg).not.toContain('✗')
 })

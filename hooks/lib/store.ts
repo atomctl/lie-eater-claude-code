@@ -7,13 +7,14 @@ import type { Bet, Ledger, Ruling, Terms, ToolRecord } from '../../types'
 import { appendRecord, nextMeta, toRawCall } from './intake'
 import { EMPTY_LEDGER } from './ledger'
 import { projectRoot } from './project'
+import { nowOf } from './result'
+import type { Now } from './result'
 import { META_START, SHAPE } from './state'
-import { isTheVerdict, plainCommand, summon, track } from './terms'
+import { isTheVerdict } from './terms'
 
 const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
-const terms = atom({ plugin: 'lie-eater', key: 'terms' } as const, null, { shape: SHAPE.terms })
-const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { shape: SHAPE.rulings })
 const watch = atom({ plugin: 'lie-eater', key: 'watch' } as const, null, { shape: SHAPE.watch })
+const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { shape: SHAPE.rulings })
 const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SHAPE.bets })
 const ledger = atom({ plugin: 'lie-eater', key: 'ledger' } as const, EMPTY_LEDGER, { shape: SHAPE.ledger })
 const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
@@ -25,9 +26,9 @@ export async function remember(
   ran: { text?: string; isError?: boolean; result?: unknown },
 ): Promise<ToolRecord | undefined> {
   const raw = toRawCall(input, ran, await projectRoot($))
-  const game = await read($, terms)
+  const w = await read($, watch)
 
-  if (raw.command !== undefined && game?.state === 'in play' && isTheVerdict(game, raw.command)) {
+  if (raw.command !== undefined && w !== null && isTheVerdict(w, raw.command)) {
     raw.isVerdict = true
   }
 
@@ -42,20 +43,7 @@ export async function remember(
     return next
   })
 
-  const r = made as ToolRecord | undefined
-
-  if (r !== undefined) {
-    await update($, watch, w => (w === null ? watchFrom(r) : track(w, r)))
-  }
-
-  return r
-}
-
-// With no config file to read, the first plain test run names the test command.
-function watchFrom(r: ToolRecord): Terms | null {
-  const command = plainCommand(r.target)
-
-  return r.kind === 'test' && !/[|;&]/.test(command) ? track(summon(command, { id: 0, at: r.at }, []), r) : null
+  return made as ToolRecord | undefined
 }
 
 /** A new prompt starts a turn. */
@@ -64,29 +52,28 @@ export async function startTurn($: EngineInterface): Promise<void> {
 }
 
 export type PaneView = {
-  game: Terms | null
-  ruling: Ruling | undefined
-  list: readonly ToolRecord[]
+  now: Now
+  watch: Terms | null
+  last: Ruling | undefined
+  records: readonly ToolRecord[]
   bets: readonly Bet[]
   unbet: number
   ledger: Ledger
-  referee: number | undefined
 }
 
 /** What the pane draws from. Reading it while drawing makes the pane follow every change. */
 export async function paneView($: EngineInterface): Promise<PaneView> {
-  const game = await read($, terms)
+  const w = await read($, watch)
   const all = await read($, rulings)
-
-  const { unbet, referee } = await read($, meta)
+  const last = w === null ? undefined : all.findLast(r => r.termsId === w.id)
 
   return {
-    game,
-    ruling: game === null ? undefined : all.findLast(r => r.termsId === game.id),
-    list: await read($, records),
+    now: nowOf({ armed: w !== null, changed: w !== null && w.lastCodeEdit > w.startRecord, ...(last === undefined ? {} : { last }) }),
+    watch: w,
+    last,
+    records: await read($, records),
     bets: await read($, bets),
-    unbet,
+    unbet: (await read($, meta)).unbet,
     ledger: await read($, ledger),
-    referee,
   }
 }

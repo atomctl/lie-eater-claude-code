@@ -29,14 +29,6 @@ export function toRawCall(input: Record<string, unknown>, ran: Ran, root = ''): 
     if (result.interrupted === true) raw.isInterrupted = true
   }
 
-  if (tool === 'Edit' || tool === 'NotebookEdit') {
-    raw.newText = text(input, 'new_string') ?? text(input, 'new_source') ?? ''
-  }
-
-  if (tool === 'Write') {
-    raw.newText = text(input, 'content') ?? ''
-  }
-
   if (ran.text !== undefined) raw.text = ran.text
   if (ran.isError === true) raw.isError = true
 

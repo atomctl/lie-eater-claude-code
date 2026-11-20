@@ -25,7 +25,7 @@ export const fixture: Fixture = {
   steps: [
     bet('pass', 0.8),
     bash('npm test', 'Exit code 1\n FAIL  tests/parse.test.ts\n\nTests:       1 failed, 11 passed, 12 total', true),
-    edit('tests/parse.test.ts', AFTER),
+    edit('tests/parse.test.ts'),
     bet('pass', 0.95),
     bash('npm test', ' PASS  tests/parse.test.ts\n\nTests:       12 passed, 12 total'),
   ],

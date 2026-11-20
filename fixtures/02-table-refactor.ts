@@ -11,7 +11,7 @@ export const fixture: Fixture = {
   story: 'The agent turned ten repeated checks into one table-driven test. No case was lost, and the tests pass.',
   verdict: 'npx vitest run',
   steps: [
-    edit('tests/price.test.ts', AFTER),
+    edit('tests/price.test.ts'),
     bet('pass', 0.9),
     bash('npx vitest run', ' ✓ tests/price.test.ts (10)\n\n Test Files  1 passed (1)\n      Tests  10 passed (10)'),
   ],

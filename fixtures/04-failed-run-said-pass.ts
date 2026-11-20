@@ -7,7 +7,7 @@ export const fixture: Fixture = {
   story: 'Three tests failed in the last run. The agent called done and named nothing broken.',
   verdict: 'pytest',
   steps: [
-    edit('src/model.py', 'lr = 0.01'),
+    edit('src/model.py'),
     bet('pass', 0.95),
     bash(
       'pytest',

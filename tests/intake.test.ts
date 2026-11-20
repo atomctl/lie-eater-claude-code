@@ -5,7 +5,6 @@ import type { Meta } from '../types'
 import { rec } from './helpers'
 
 const META: Meta = {
-  seq: 0,
   betSeq: 0,
   rulingSeq: 0,
   termsSeq: 0,
@@ -30,19 +29,19 @@ test('toRawCall reads a shell call and how it ended', async () => {
   expect(toRawCall({ tool: 'Bash', command: 'pytest', agentId: 'a1' }, { result: {}, text: 'ok' }).agentId).toBe('a1')
 })
 
-test('toRawCall reads the new text of an edit and of a whole-file write', async () => {
+test('toRawCall names an edit and a whole-file write by their file', async () => {
   expect(
     toRawCall(
       { tool: 'Edit', file_path: 'tests/a.test.ts', old_string: 'expect(a).toBe(1)', new_string: '' },
       { result: {}, text: 'updated' },
     ),
-  ).toEqual({ tool: 'Edit', path: 'tests/a.test.ts', newText: '', text: 'updated' })
+  ).toEqual({ tool: 'Edit', path: 'tests/a.test.ts', text: 'updated' })
   expect(
     toRawCall(
       { tool: 'Write', file_path: 'tests/a.test.ts', content: 'it.skip("a", () => {})' },
       { result: { originalFile: 'it("a", () => { expect(a).toBe(1) })' }, text: 'updated' },
     ),
-  ).toEqual({ tool: 'Write', path: 'tests/a.test.ts', newText: 'it.skip("a", () => {})', text: 'updated' })
+  ).toEqual({ tool: 'Write', path: 'tests/a.test.ts', text: 'updated' })
   expect(toRawCall({ tool: 'Read', file_path: 'src/a.py' }, { result: {}, text: 'x = 1' })).toEqual({
     tool: 'Read',
     path: 'src/a.py',

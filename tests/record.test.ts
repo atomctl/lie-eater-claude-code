@@ -3,7 +3,6 @@ import { expect, test } from 'claude-code/testing'
 import {
   classifyCommand,
   evidenceLine,
-  extractNumbers,
   isCodeFile,
   isShellEdit,
   isTestFile,
@@ -105,13 +104,6 @@ test('fileCounts counts checks, tests, skip marks and tables; checkLines lists t
   expect(checkLines(`expect(x).toBe('${'y'.repeat(200)}')`)[0]).toHaveLength(120)
 })
 
-test('extractNumbers finds number tokens and drops thousands commas', async () => {
-  expect(extractNumbers('val_acc=0.8612 after 1,204 steps, 86% done')).toEqual(['0.8612', '1204', '86'])
-  expect(extractNumbers('no numbers here')).toEqual([])
-  expect(extractNumbers(Array.from({ length: 200 }, (_, i) => String(i)).join(' '))).toHaveLength(150)
-  expect(extractNumbers(Array.from({ length: 200 }, (_, i) => String(i)).join(' ')).at(-1)).toBe('199')
-})
-
 test('makeRecord reads how a call ended', async () => {
   const made = (raw: Parameters<typeof makeRecord>[0]) => makeRecord(raw, 7, 2, 1000)
 
@@ -150,21 +142,17 @@ test('makeRecord reads how a call ended', async () => {
 test('makeRecord names an edit, a write and another tool by their file', async () => {
   const made = (raw: Parameters<typeof makeRecord>[0]) => makeRecord(raw, 1, 1, 0)
 
-  expect(made({ tool: 'Edit', path: 'tests/test_a.py', newText: '' })).toMatchObject({ kind: 'edit', target: 'tests/test_a.py' })
-  expect(made({ tool: 'Write', path: 'README.md', newText: '# hi' }).kind).toBe('write')
-  expect(made({ tool: 'Read', path: 'src/a.py', text: 'x = 0.8612' })).toMatchObject({
-    kind: 'tool',
-    numbers: ['0.8612'],
-  })
+  expect(made({ tool: 'Edit', path: 'tests/test_a.py' })).toMatchObject({ kind: 'edit', target: 'tests/test_a.py' })
+  expect(made({ tool: 'Write', path: 'README.md' }).kind).toBe('write')
+  expect(made({ tool: 'Read', path: 'src/a.py', text: 'x = 0.8612' })).toMatchObject({ kind: 'tool', target: 'src/a.py' })
 })
 
-test('makeRecord keeps the last 2,000 characters of output and the numbers of all of it', async () => {
+test('makeRecord keeps the last 2,000 characters of output', async () => {
   const long = `first 0.111 ${'x'.repeat(3000)} last 0.999`
   const made = makeRecord({ tool: 'Bash', command: 'cat big.log', text: long }, 1, 1, 0)
 
   expect(made.output).toHaveLength(2000)
   expect(made.output.endsWith('last 0.999')).toBe(true)
-  expect(made.numbers).toEqual(['0.111', '0.999'])
 })
 
 test('evidenceLine shows the command and its last output line, cut to 160 characters', async () => {

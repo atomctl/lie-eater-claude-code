@@ -15,7 +15,6 @@ import {
 export { classifyCommand, isShellEdit } from './commands'
 
 const OUTPUT_KEPT = 2000
-const NUMBERS_KEPT = 150
 const LINE_KEPT = 160
 
 const count = (text: string, pattern: RegExp): number => [...text.matchAll(pattern)].length
@@ -131,29 +130,22 @@ export function checkLines(raw: string): string[] {
     .map(line => line.slice(0, 120))
 }
 
-export function extractNumbers(text: string): string[] {
-  const tokens = text.match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g) ?? []
-
-  return [...new Set(tokens.map(token => token.replaceAll(',', '')))].slice(-NUMBERS_KEPT)
-}
-
 export type RawCall = {
   tool: string
   agentId?: string
   command?: string
   path?: string
-  newText?: string
   text?: string
   isError?: boolean
   isBackground?: boolean
   isInterrupted?: boolean
-  /** The command is the test command the person locked for the game in play. */
+  /** The command is the full check of the watch. */
   isVerdict?: boolean
 }
 
 const EDIT_TOOLS: Record<string, 'edit' | 'write'> = { Edit: 'edit', NotebookEdit: 'edit', Write: 'write' }
 
-// How a shell command ended, as far as the referee can tell.
+// How a shell command ended, as far as Lie Eater can tell.
 function stateOf(
   raw: RawCall,
   kind: CommandKind,
@@ -180,7 +172,7 @@ function stateOf(
   if (isMasked(command)) {
     // The exit code in sight is another command's (`| tail`, `; git status`):
     // only the counts decide, and only when they are the run's own.
-    // shortcut: behind a pipe a runner the referee does not know is never read; when people ask,
+    // shortcut: behind a pipe a runner Lie Eater does not know is never read; when people ask,
     // hand the locked command to commands.ts so it finds that run in the chain.
     if (byWord || counts === undefined || !countsAreItsOwn(command)) {
       return 'unknown'
@@ -215,13 +207,12 @@ export function makeRecord(raw: RawCall, id: number, turn: number, at: number): 
     ...(raw.agentId === undefined ? {} : { agentId: raw.agentId }),
     tool: raw.tool,
     output: text.slice(-OUTPUT_KEPT),
-    numbers: extractNumbers(`${raw.command ?? ''} ${raw.newText ?? ''} ${text}`),
   }
 
   if (raw.command !== undefined) {
     const known = classifyCommand(raw.command)
-    // The command the person locked is a test run by their word, though the
-    // referee does not know its runner (`make ci`, `python manage.py test`).
+    // The full check is a test run by its own word, though Lie Eater does
+    // not know its runner (`make ci`, `python manage.py test`).
     const byWord = raw.isVerdict === true && known !== 'test' && known !== 'build'
     const kind = byWord ? 'test' : known
     const found = kind === 'test' ? summaries(text) : []

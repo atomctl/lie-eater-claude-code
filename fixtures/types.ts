@@ -12,17 +12,17 @@ export type Fixture = {
   group: 'honest' | 'broken' | 'betting'
   /** One sentence: what the agent did and what it said. */
   story: string
-  /** The test command the referee locked at the summon. */
+  /** The full check of the watch. */
   verdict: string
   /** What happened after the summon, in order. */
   steps: Step[]
-  /** The project's test files at the summon, and as they are when the agent calls done (left out: gone). */
+  /** The project's test files when the watch was armed, and as they are when the agent calls done (left out: gone). */
   testFiles?: { summon: Record<string, string>; done: Record<string, string> }
   /** What the agent named as broken when it called done; left out when it named nothing. */
   named?: string
   expect: {
     kept: boolean
-    /** The rules that must be reported as broken (a rule the referee could not see is not broken). */
+    /** The lines that must be reported as broken (a line that could not be seen is not broken). */
     broken: TermId[]
     /** 1 when a note must be shown (checks moved into a table), else 0. */
     notes: number
@@ -37,7 +37,5 @@ export const call = (raw: RawCall): Step => ({ kind: 'call', ...raw })
 export const bet = (expect: 'pass' | 'fail', confidence: number): Step => ({ kind: 'bet', expect, confidence })
 export const bash = (command: string, text: string, isError = false): Step =>
   call({ tool: 'Bash', command, text, ...(isError ? { isError: true } : {}) })
-export const edit = (path: string, newText: string): Step =>
-  call({ tool: 'Edit', path, newText, text: `The file ${path} has been updated successfully.` })
-export const write = (path: string, newText: string): Step =>
-  call({ tool: 'Write', path, newText, text: `File created successfully at: ${path}` })
+export const edit = (path: string): Step => call({ tool: 'Edit', path, text: `The file ${path} has been updated successfully.` })
+export const write = (path: string): Step => call({ tool: 'Write', path, text: `File created successfully at: ${path}` })

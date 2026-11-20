@@ -1,11 +1,15 @@
-// The card: a finished game as a picture, written as SVG text (no library),
+// The card: the newest result as a picture, written as SVG text (no library),
 // so that a person can post it or put it in a README.
 import type { Receipt } from './receipts'
-import { verdictOf } from './words'
 
 const W = 640
 const FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
 const C = { bg: '#0d1117', line: '#30363d', text: '#e6edf3', dim: '#8b949e', faint: '#6e7681', good: '#3fb950', bad: '#f85149', note: '#d29922' }
+const COLOUR = { checked: C.good, distrust: C.bad, unchecked: C.note } as const
+
+// The place kept for a character (the owner wants one later): a square at the
+// top right. It is empty now; draw the character inside this group.
+const CHARACTER = { x: W - 136, y: 24, size: 96 }
 
 const esc = (text: string): string =>
   text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
@@ -19,56 +23,45 @@ function line(x: number, y: number, text: string, opts: { size?: number; fill?: 
   }>${esc(text)}</text>`
 }
 
-/** One finished game as a card. `streak` is the count of clean games in a row; 0 hides that line. */
-export function cardSvg(receipt: Receipt, opts: { referee?: number; streak: number }): string {
-  const ruling = receipt.rulings.at(-1)
-  const rules = (ruling?.lines ?? []).filter(l => !l.soft)
-  const notes = (ruling?.lines ?? []).filter(l => l.soft)
-  const isOverruled = ruling?.overruled === true
-  const isKept = ruling?.met === true
-  // the referee could not read the test run: nothing is broken, nothing is proven
-  const isUnproven = ruling !== undefined && verdictOf(ruling.lines) === 'unproven'
-  const verdict = isOverruled ? 'OVERRULED BY THE PERSON' : isKept ? 'RULES KEPT' : isUnproven ? 'NOT PROVEN' : 'RULES BROKEN'
-  const colour = isOverruled ? C.dim : isKept ? C.good : isUnproven ? C.note : C.bad
+/** The newest result of a receipt as a card: the person's three lines, then the evidence in short. */
+export function cardSvg(receipt: Receipt): string {
+  const last = receipt.results.at(-1)
+  const [title = 'No result yet', ...said] = last?.screen ?? []
+  const colour = last === undefined || last.accepted === true ? C.dim : COLOUR[last.result]
   const bets =
     receipt.score === null
       ? 'No bet was placed.'
       : `The AI said "${Math.round(receipt.score.said * 100)}% sure". It was right ${receipt.score.won} of ${receipt.score.n} times.`
 
   const body: string[] = []
-  let y = 150
+  let y = 100
 
-  for (const rule of rules) {
-    const mark = rule.pass ? '✓' : rule.unclear ? '?' : '✗'
-    body.push(line(40, y, mark, { size: 17, fill: rule.pass ? C.good : rule.unclear ? C.note : C.bad, weight: '700' }))
-    body.push(line(66, y, cut(rule.plain, 58), { size: 16 }))
-    y += 28
+  for (const text of [...said, ...(last?.accepted === true ? ['You accepted this change.'] : [])]) {
+    body.push(line(40, y, cut(text, 52), { size: 16 }))
+    y += 26
   }
-  for (const note of notes) {
-    body.push(line(40, y, '?', { size: 17, fill: C.note, weight: '700' }))
-    body.push(line(66, y, cut(note.plain, 58), { size: 16, fill: C.note }))
-    y += 28
+  body.push(line(40, y, cut(`${receipt.check.command} · ${receipt.createdAt.slice(0, 10)}`, 66), { size: 13, fill: C.dim }))
+  y += 40
+  for (const l of last?.lines ?? []) {
+    const mark = l.soft === true || l.unclear === true ? '?' : l.pass ? '✓' : '✗'
+    const fill = mark === '✓' ? C.good : mark === '?' ? C.note : C.bad
+    body.push(line(40, y, mark, { size: 15, fill, weight: '700' }))
+    body.push(line(64, y, cut(l.plain, 60), { size: 14, fill: C.dim }))
+    y += 24
   }
 
-  const H = Math.max(360, y + 96)
+  const H = Math.max(320, y + 80)
 
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(`Lie Eater: ${verdict}`)}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(`Lie Eater: ${title}`)}">`,
     `<rect x="1" y="1" width="${W - 2}" height="${H - 2}" rx="14" fill="${C.bg}" stroke="${C.line}" stroke-width="2"/>`,
-    line(40, 46, 'LIE EATER', { size: 13, fill: C.dim, weight: '700', space: 4 }),
-    // the referee's face: pleased at a kept game, stern at a broken one
-    line(W - 40, 46, `${isKept && !isOverruled ? '(^_^)' : '(-_-)'} Referee${opts.referee === undefined ? '' : ` No. ${opts.referee}`}`, {
-      size: 13,
-      fill: C.dim,
-      anchor: 'end',
-    }),
-    line(40, 96, verdict, { size: isOverruled ? 30 : 40, fill: colour, weight: '700', space: 1 }),
-    line(40, 122, cut(`${receipt.terms.verdict} · ${receipt.createdAt.slice(0, 10)}`, 66), { size: 13, fill: C.dim }),
+    `<g id="character" transform="translate(${CHARACTER.x} ${CHARACTER.y})" data-size="${CHARACTER.size}"></g>`,
+    line(40, 34, 'LIE EATER', { size: 13, fill: C.dim, weight: '700', space: 4 }),
+    line(40, 70, title, { size: 32, fill: colour, weight: '700' }),
     ...body,
-    `<line x1="40" y1="${H - 84}" x2="${W - 40}" y2="${H - 84}" stroke="${C.line}" stroke-width="1"/>`,
-    line(40, H - 54, bets, { size: 14 }),
-    ...(opts.streak > 0 ? [line(40, H - 30, `Clean games in a row: ${opts.streak}`, { size: 13, fill: C.dim })] : []),
-    line(W - 40, H - 30, 'Make your AI bet on its own code.', { size: 12, fill: C.faint, anchor: 'end' }),
+    `<line x1="40" y1="${H - 64}" x2="${W - 40}" y2="${H - 64}" stroke="${C.line}" stroke-width="1"/>`,
+    line(40, H - 36, bets, { size: 13 }),
+    line(W - 40, H - 14, 'Lie Eater checks the proof before you believe it.', { size: 11, fill: C.faint, anchor: 'end' }),
     '</svg>',
     '',
   ].join('\n')

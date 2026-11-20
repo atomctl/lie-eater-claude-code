@@ -1,46 +1,31 @@
 // What happens around a bet in a live session: taking it, the gate that asks
-// for it, settling it on the run's result, and the dice. The rules themselves
-// are in bets.ts.
+// for it, and settling it on the run's result. The rules themselves are in
+// bets.ts. The person sees bets only under Details: no toast, no sound.
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Timer } from 'claude-code'
+import type { EngineInterface } from 'claude-code'
 
 import type { Bet, Terms, ToolRecord } from '../../types'
-import { betText, callBet, closeTurn, gateText, isGated, postBet, settleBet, youWon } from './bets'
+import { betText, callBet, closeTurn, gateText, isGated, postBet, settleBet } from './bets'
 import { isAlone } from './commands'
-import { debtNote, recordBet, refreshStatus } from './house'
-import { thump } from './referee'
+import { recordBet } from './house'
 import { META_START, SHAPE } from './state'
 import { isTheVerdict } from './terms'
-import { VOICE } from './words'
 
 // Each file that touches state declares its own atoms (see state.ts).
 const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
-const terms = atom({ plugin: 'lie-eater', key: 'terms' } as const, null, { shape: SHAPE.terms })
+const watch = atom({ plugin: 'lie-eater', key: 'watch' } as const, null, { shape: SHAPE.watch })
 const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SHAPE.bets })
 const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
 
 const REFUSALS_PER_TURN = 2
-const NO_REFEREE = 'No referee is present. No bet taken.'
-
-// The dice turns while a bet is open. A reload drops the timer; the dice then
-// shows one face until the bet settles.
-let dice: Timer | undefined
-
-function rollDice($: EngineInterface): void {
-  dice ??= $.clock.every(250, () => $.ui.invalidate('ui.render'))
-}
-
-function stopDice(): void {
-  dice?.cancel()
-  dice = undefined
-}
+const NO_CHECKS = 'Lie Eater: this project has no checks yet. No bet taken.'
 
 /** The bet tool: the agent says what it expects of the next run. */
 export async function takeBet($: EngineInterface, input: unknown): Promise<string> {
-  const game = await read($, terms)
+  const w = await read($, watch)
 
-  if (game?.state !== 'in play') {
-    return NO_REFEREE
+  if (w === null) {
+    return NO_CHECKS
   }
 
   const { betSeq, turn } = await read($, meta)
@@ -58,19 +43,16 @@ export async function takeBet($: EngineInterface, input: unknown): Promise<strin
 
   if (isTaken) {
     await update($, meta, m => ({ ...m, betSeq: betSeq + 1 }))
-    rollDice($)
-    await refreshStatus($)
 
-    // A mod cannot add to the system prompt: the bet's reply is where the agent
-    // hears which command is the test run, and of the debt.
-    return `${reply} The test command of this game is \`${game.verdict}\`.${await debtNote($)}`
+    // A mod cannot add to the system prompt: the bet's reply is where the agent hears which command is the full check.
+    return `${reply} The full check of this project is \`${w.verdict}\`.`
   }
 
   return reply
 }
 
 /**
- * The gate: while a referee is present, a test or build run of the main agent
+ * The gate: while a watch is armed, a test or build run of the main agent
  * with no open bet is refused, twice per turn at most. After that the run goes
  * through and is counted, so the agent is never stuck. Hands back the text of
  * the refusal, or undefined when the run may go on.
@@ -80,9 +62,9 @@ export async function refuseRun($: EngineInterface, input: Record<string, unknow
     return undefined
   }
 
-  const game = await read($, terms)
+  const w = await read($, watch)
 
-  if (game?.state !== 'in play' || !isGated(input.command, game.verdict)) {
+  if (w === null || !isGated(input.command, w.verdict)) {
     return undefined
   }
 
@@ -99,22 +81,21 @@ export async function refuseRun($: EngineInterface, input: Record<string, unknow
   }
 
   await update($, meta, m => ({ ...m, denies: m.denies + 1 }))
-  $.ui.toast(VOICE.betAsked)
 
-  return gateText(game.verdict)
+  return gateText(w.verdict)
 }
 
 /**
- * Settles the open bet with a run of the main agent. `before` is the game as it
- * was before this run. Hands back the line the agent reads on the run's result:
- * it informs, it never gives an order.
+ * Settles the open bet with a run of the main agent. `before` is the watch as
+ * it was before this run. Hands back the line the agent reads on the run's
+ * result: it informs, it never gives an order.
  */
 export async function settle($: EngineInterface, r: ToolRecord, before: Terms | undefined): Promise<string | undefined> {
   if (before === undefined || r.tool !== 'Bash' || r.agentId !== undefined || !isGated(r.target, before.verdict)) {
     return undefined
   }
 
-  // A run that the referee could not read made nothing known.
+  // A run whose result could not be read made nothing known.
   const lastRead = before.lastReadRun ?? before.lastGatedRun
   const hadChange = lastRead === 0 || before.lastCodeEdit > lastRead
   let settled: Bet | undefined
@@ -133,13 +114,12 @@ export async function settle($: EngineInterface, r: ToolRecord, before: Terms | 
     return undefined
   }
 
-  stopDice()
-  // A passing run of the test command by itself may be the end of the task; a piped one cannot be.
+  // A passing run of the full check by itself may be the end of the task; a piped one cannot be.
   const isVerdict = isTheVerdict(before, r.target)
   const hint = !isVerdict
     ? ''
     : !isAlone(r.target)
-      ? ` This run cannot end the game: run \`${before.verdict}\` by itself before you call done.`
+      ? ` This run cannot show that the work is done: run \`${before.verdict}\` by itself before you call done.`
       : r.state === 'clean'
         ? ' If the task is finished, call the done tool.'
         : ''
@@ -148,19 +128,12 @@ export async function settle($: EngineInterface, r: ToolRecord, before: Terms | 
     return `Lie Eater: bet #${done.id} VOID. Nothing changed since the last run.${hint}`
   }
 
-  const word = done.state === 'won' ? 'WON' : 'LOST'
-  $.ui.toast(`BET ${word}: ${betText(done)}`)
   await recordBet($, done)
-  await refreshStatus($)
-  if (done.state === 'lost') thump($)
-  // The person called this run too.
-  const called = youWon(done)
-  if (called !== undefined) $.ui.toast(called ? 'You called it right.' : 'You called it wrong.')
 
-  return `Lie Eater: bet #${done.id} ${word}. You said ${betText(done)}. The run: ${done.line ?? ''}.${hint}`
+  return `Lie Eater: bet #${done.id} ${done.state === 'won' ? 'WON' : 'LOST'}. You said ${betText(done)}. The run: ${done.line ?? ''}.${hint}`
 }
 
-/** Bet against your AI: the person's own call on the open bet (a button in the pane, or `/call`). */
+/** Bet against your AI: the person's own call on the open bet (a button under Details, or `/call`). */
 export async function callIt($: EngineInterface, call: string): Promise<string> {
   const asked = call.trim()
 
@@ -182,10 +155,8 @@ export async function callIt($: EngineInterface, call: string): Promise<string> 
 /** The end of a turn: a bet that no run settled is void. */
 export async function closeBets($: EngineInterface): Promise<void> {
   await update($, bets, list => (list.some(b => b.state === 'open') ? closeTurn(list) : list))
-  stopDice()
-  await refreshStatus($)
 }
 
-export async function openBet($: EngineInterface): Promise<Bet | undefined> {
+async function openBet($: EngineInterface): Promise<Bet | undefined> {
   return (await read($, bets)).find(b => b.state === 'open')
 }

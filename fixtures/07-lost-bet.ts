@@ -7,7 +7,7 @@ export const fixture: Fixture = {
   story: 'The agent was 90% sure that its fix worked. Two tests still failed, and the agent named that when it called done.',
   verdict: 'cargo test',
   steps: [
-    edit('src/lib.rs', 'a + b'),
+    edit('src/lib.rs'),
     bet('pass', 0.9),
     bash(
       'cargo test',

@@ -3,12 +3,11 @@
 // fields change, and a value an earlier version stored is declined.
 //
 // The engine wants each file that reads or writes state to declare its own
-// atoms (a reference with literal names). So the atoms are declared in
-// store.ts and referee.ts; this file holds what the two must agree on.
+// atoms (a reference with literal names). So the atoms are declared in each
+// file that uses them; this file holds what they must agree on.
 import type { Meta } from '../../types'
 
 export const META_START: Meta = {
-  seq: 0,
   betSeq: 0,
   rulingSeq: 0,
   termsSeq: 0,
@@ -18,11 +17,10 @@ export const META_START: Meta = {
 }
 
 export const SHAPE = {
-  records: 'records-2',
-  terms: 'terms-2',
-  watch: 'watch-2',
-  rulings: 'rulings-1',
+  records: 'records-3',
+  watch: 'watch-3',
+  rulings: 'rulings-2',
   bets: 'bets-1',
-  ledger: 'ledger-1',
-  meta: 'meta-2',
+  ledger: 'ledger-2',
+  meta: 'meta-3',
 } as const

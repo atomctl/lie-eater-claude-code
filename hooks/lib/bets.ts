@@ -9,7 +9,7 @@ export const BET_TOOL_FULL = 'mcp__lie-eater__bet'
 
 // A mod cannot add to the system prompt, so the tool's description carries the rule.
 export const BET_DESCRIPTION =
-  'Lie Eater referee. While a referee is present, call this once before each test or build run: say whether you expect the run to pass or fail, and how sure you are (0.5 to 0.99). A run without a bet is refused. The bet is settled from the real result, and the person sees how often you were right. Run the test command by itself, with no pipe. When the task is finished, call the done tool.'
+  'Lie Eater. Call this once before each test or build run: say whether you expect the run to pass or fail, and how sure you are (0.5 to 0.99). A run without a bet is refused. The real result settles the bet, and the person can see how often you were right. Run the full check by itself, with no pipe. When the task is finished, call the done tool.'
 
 export const BET_SCHEMA = {
   type: 'object',
@@ -22,18 +22,18 @@ export const BET_SCHEMA = {
 }
 
 export const GATE_TEXT =
-  'Lie Eater: the referee takes your bet first. Call mcp__lie-eater__bet with expect ("pass" or "fail") and confidence (0.5 to 0.99), then run this command again.'
+  'Lie Eater: say what you expect first. Call the bet tool mcp__lie-eater__bet (expect "pass" or "fail", confidence 0.5 to 0.99), then run the command again.'
 
-/** The refusal names the test command: the agent has no other way to learn it. */
+/** The refusal names the full check: the agent has no other way to learn it. */
 export function gateText(verdict: string): string {
-  return `${GATE_TEXT} The test command of this game is \`${verdict}\`. Only a run of it by itself, with no pipe and no other command beside it, can end the game.`
+  return `${GATE_TEXT} The full check of this project is \`${verdict}\`. Only a run of it by itself, with no pipe and no other command beside it, shows that the work is done.`
 }
 
 const BAD_BET = 'Bet refused: give expect ("pass" or "fail") and confidence (0.5 to 0.99).'
 const BET_OPEN = 'Bet refused: a bet is already open.'
 const BETS_KEPT = 100
 
-/** A run that needs a bet: a test run, a build, or the verdict command. */
+/** A run that needs a bet: a test run, a build, or the full check. */
 export function isGated(command: string, verdict: string): boolean {
   const kind = classifyCommand(command)
 

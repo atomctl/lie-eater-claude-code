@@ -1,49 +1,36 @@
-// What the referee does: the summon, the ruling on the done tool, Fix this,
-// the explanation. These functions talk to the engine (`$`); every decision
-// they act on comes from the plain rules in terms.ts and words.ts.
+// What Lie Eater does in a live session: it arms itself, it checks a `done`
+// call, and it answers /check, /accept and the demo. These functions talk to
+// the engine (`$`); every decision they act on comes from the plain functions
+// in terms.ts (the proof) and result.ts (what the person is shown).
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Looked, Ruling, Terms, ToolRecord } from '../../types'
-import { recordRuling, refreshStatus, writeReceipts } from './house'
-import { DEMO_DIR, DEMO_FILES, DEMO_INTRO, DEMO_PROMPT, DEMO_VERDICT } from './demo'
+import { refreshStatus, writeReceipts } from './house'
+import { DEMO_DIR, DEMO_FILES, DEMO_INTRO, DEMO_PROMPT, DEMO_TEST, DEMO_VERDICT } from './demo'
 import { inProject, projectFiles, projectNames } from './project'
-import { CARD_SVG, RECEIPTS_JSON } from './receipts'
+import { resultOf } from './result'
 import { META_START, SHAPE } from './state'
-import {
-  detectVerdict,
-  isKept,
-  isLie,
-  measure,
-  namesBreach,
-  noFoul,
-  packageTestScript,
-  plainCommand,
-  rule,
-  snapshotOf,
-  summon,
-  track,
-} from './terms'
-import { VOICE, explain, repairOrder, rulingText, termsText, verdictOf } from './words'
+import { armWatch, detectVerdict, isLie, measure, packageTestScript, plainCommand, rule, snapshotOf, track } from './terms'
+import { checkPrompt, detailLines, repairOrder } from './words'
 
 export const PANE = 'lie-eater'
-const DEMO_TEST = `${DEMO_DIR}/price.test.mjs`
 
 // Each file that touches state declares its own atoms (see state.ts).
 const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
-const terms = atom({ plugin: 'lie-eater', key: 'terms' } as const, null, { shape: SHAPE.terms })
+const watch = atom({ plugin: 'lie-eater', key: 'watch' } as const, null, { shape: SHAPE.watch })
 const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { shape: SHAPE.rulings })
 const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
 
 const RULINGS_KEPT = 50
-const FIXES_PER_GAME = 3
+const CHECKS_PER_WATCH = 3
 
 export const DONE_TOOL = 'done'
 export const DONE_TOOL_FULL = 'mcp__lie-eater__done'
 
 // A mod cannot add to the system prompt, so the tool's description carries the rule.
 export const DONE_DESCRIPTION =
-  'Lie Eater referee. Call this when the task you were given under the referee is finished. The referee rules at once, from the test files and the test runs, and tells you what it found. If you know that a rule is broken, say which in `broken`, in your own words. Only a run of the test command by itself (no pipe, no other command beside it) proves that the tests pass.'
+  'Lie Eater. Call this when the task is finished. Lie Eater then checks the proof at once and answers with what it found: did the full check (the project\'s test command) pass after your last change, and was any check removed, deleted or switched off? Only a run of the full check by itself (one command, no pipe, no other command beside it) shows that the checks pass. If you changed, removed or switched off a check, or a check still fails, say so in `broken`, in your own words.'
 
 export const DONE_SCHEMA = {
   type: 'object',
@@ -51,41 +38,32 @@ export const DONE_SCHEMA = {
     broken: {
       type: 'string',
       maxLength: 500,
-      description: 'Rules you know are broken, in your own words. Leave it out when none.',
+      description: 'What you changed in the checks, or what still fails, in your own words. Leave it out when nothing.',
     },
   },
 }
 
-// shortcut: the number note is dormant since the referee rules on the done tool; delete numbers.ts or feed it when the owner decides
-const NO_NUMBERS: readonly string[] = []
-
-const ALREADY = 'A referee is already present. /rule ends the game.'
-const NO_TESTS =
-  'I found no tests in this project. Type /summon tests and I ask the AI to write your first tests. Or tell me how you run them, for example: /summon npm test'
 const FIRST_TESTS =
   'This project has no tests. Add a small test setup with a test command, and 3 to 5 tests for the most important behaviour. Then say which command runs them.'
-const ASKED_FOR_TESTS = 'The referee asked the AI for your first tests. Type /summon when they exist.'
-const GAME_ENDS = 'The game ends when the AI calls done and the rules are kept. /rule ends it now.'
-const NO_REFEREE = 'No referee is present. Nothing to rule.'
-const NOT_THE_MAIN_AI = 'The referee rules only when the main AI calls done.'
-const NOT_PROVEN = 'NOT PROVEN. The referee could not read the test run.'
-const NAMED = 'RULES BROKEN. The AI named it.'
-const CALL_AGAIN = 'Then call the done tool again.'
-const NOTHING_TO_FIX = 'Nothing to fix.'
-const ASKED_TO_RUN = 'The referee asked the AI to run the tests by themselves.'
-const SENT_BACK_ENOUGH =
-  'The referee has sent the AI back 3 times. Read /explain, or type /overrule if a rule is wrong for this task.'
-const NO_GAME = 'No game has been ruled yet. Type /summon before you give the AI a task.'
+const ASKED_FOR_CHECKS =
+  'Lie Eater asked the AI to add checks. They protect the work from now on; the work done before them is not checked.'
+const NO_CHECKS = 'Lie Eater: this project has no checks yet, so "done" cannot be checked.'
+const NOT_THE_MAIN_AI = "Lie Eater checks only the main AI's done call."
+const SENT_ENOUGH = 'Lie Eater has sent the AI back 3 times. Look at the Details with /lie-eater, or type /accept if the change is right.'
+const NOTHING_TO_ACCEPT = 'Nothing to accept.'
+const ACCEPTED = 'You accepted the change. Lie Eater watches from the files as they are now.'
+const RESULT_FIRST = 'Lie Eater has a result for you first: type /check or /accept, then /lie-eater demo.'
 
-const inPlay = (t: Terms | null): t is Terms => t !== null && t.state === 'in play'
-const brokenRules = (r: Pick<Ruling, 'lines'>): number => r.lines.filter(l => !l.pass && !l.soft).length
+const armedNow = (verdict: string): string =>
+  `Lie Eater found the checks (\`${verdict}\`) and watches from now on. The work done before this is not checked.`
 
-// "Done" can only be a lie about work: with no edit and no run since the summon there was none.
-const hasWorked = (t: Terms): boolean => t.lastCodeEdit > t.startRecord || t.lastGatedRun > t.startRecord
+// "Done" can only be a lie about work: with no edit and no run since the watch was armed there was none.
+const hasWorked = (w: Terms): boolean => w.lastCodeEdit > w.startRecord || w.lastGatedRun > w.startRecord
+// A red result the person has not accepted.
+const isOpenRed = (r: Ruling | undefined): boolean => r !== undefined && r.result === 'distrust' && r.accepted !== true
 
-// The sound is a nicety (macOS only): nothing waits for it, and a failed play
-// must not stop a ruling.
-export function thump($: EngineInterface): void {
+// The sound is a nicety (macOS only): nothing waits for it, and a failed play must not stop a result.
+function thump($: EngineInterface): void {
   void $.audio.play({ asset: 'sounds/stamp.wav' }).catch(() => undefined)
 }
 
@@ -106,87 +84,6 @@ function verdictFromRecord(list: readonly ToolRecord[]): string | undefined {
     .findLast(command => !/[|;&]/.test(command))
 }
 
-export async function summonCmd($: EngineInterface, args: string): Promise<string> {
-  if (inPlay(await read($, terms))) {
-    return ALREADY
-  }
-
-  const asked = args.trim()
-
-  if (asked === 'tests') {
-    sendAsPerson($, FIRST_TESTS)
-
-    return ASKED_FOR_TESTS
-  }
-
-  if (asked === 'demo') {
-    return summonDemo($)
-  }
-
-  const list = await read($, records)
-  const files = await projectFiles($)
-  const names = await projectNames($)
-  const verdict = asked !== '' ? asked : (verdictFromRecord(list) ?? detectVerdict(files, names))
-
-  if (verdict === undefined) {
-    return NO_TESTS
-  }
-
-  const { termsSeq } = await read($, meta)
-  const game = summon(
-    verdict,
-    { id: termsSeq + 1, at: await $.clock.now() },
-    list,
-    packageTestScript(files['package.json']),
-    names,
-  )
-  // The test files as they are now: rules 2 to 4 measure them again at each ruling.
-  await enter($, { ...game, snapshot: snapshotOf(await readFiles($, game.testFiles ?? [])) })
-
-  return [VOICE.summoned, ...termsText(game), GAME_ENDS].join('\n')
-}
-
-// The opening of every game: the pane, the voice, the sound.
-async function enter($: EngineInterface, game: Terms): Promise<void> {
-  await update($, terms, () => game)
-  await update($, meta, m => ({ ...m, termsSeq: Math.max(m.termsSeq, game.id) }))
-  // With no surface to draw on (a headless run) the game still starts.
-  await $.ui.open({ id: PANE, title: 'Lie Eater' }).catch(() => undefined)
-  $.ui.toast(VOICE.summoned)
-  await refreshStatus($)
-  thump($)
-}
-
-/** `/summon demo`: a tiny project with one failing test, and a whole game on it. */
-async function summonDemo($: EngineInterface): Promise<string> {
-  for (const [name, text] of Object.entries(DEMO_FILES)) {
-    await $.fs.write(await inProject($, `${DEMO_DIR}/${name}`), text)
-  }
-
-  const { termsSeq } = await read($, meta)
-  const at = await $.clock.now()
-  const game: Terms = {
-    ...summon(DEMO_VERDICT, { id: termsSeq + 1, at }, await read($, records)),
-    demo: true,
-    snapshot: snapshotOf(await readFiles($, [DEMO_TEST])),
-  }
-  await enter($, game)
-  sendAsPerson($, DEMO_PROMPT)
-
-  return [VOICE.summoned, ...DEMO_INTRO].join('\n')
-}
-
-/**
- * Takes a new record into the game in play. Hands back the game as it was
- * before this record: a bet is settled against what was known until then.
- */
-export async function onRecord($: EngineInterface, r: ToolRecord): Promise<Terms | undefined> {
-  const before = await read($, terms)
-  await update($, terms, t => (inPlay(t) ? track(t, r) : t))
-
-  return inPlay(before) ? before : undefined
-}
-
 // The texts of these files of the project; a file that cannot be read is left out.
 async function readFiles($: EngineInterface, paths: readonly string[]): Promise<Record<string, string>> {
   const texts: Record<string, string> = {}
@@ -199,11 +96,114 @@ async function readFiles($: EngineInterface, paths: readonly string[]): Promise<
   return texts
 }
 
-/** Before each ruling and each /fix the referee reads the test files of the summon again. */
-async function looked($: EngineInterface, game: Terms): Promise<Looked> {
-  const snap = game.snapshot ?? {}
+/** At each `done` and each /check the test files of the snapshot are read again. */
+async function looked($: EngineInterface, w: Terms): Promise<Looked> {
+  const snap = w.snapshot ?? {}
 
   return measure(snap, await readFiles($, Object.keys(snap)))
+}
+
+/** A watch from the project as it is now: the full check and the test files named. */
+async function fresh($: EngineInterface, verdict: string, names?: readonly string[]): Promise<Terms> {
+  const files = await projectFiles($)
+
+  return armWatch(
+    verdict,
+    { id: 0, at: await $.clock.now() },
+    await read($, records),
+    packageTestScript(files['package.json']),
+    names ?? (await projectNames($)),
+  )
+}
+
+/**
+ * Finds the project's checks: the newest plain test run in the record (up to
+ * record `upTo`), else the config files, else the names of the test files.
+ * Undefined when there is no test command or no test file: "no checks yet".
+ */
+async function findChecks($: EngineInterface, upTo = Infinity): Promise<Terms | undefined> {
+  const names = await projectNames($)
+  const runs = (await read($, records)).filter(r => r.id <= upTo)
+  const verdict = verdictFromRecord(runs) ?? detectVerdict(await projectFiles($), names)
+
+  if (verdict === undefined) {
+    return undefined
+  }
+
+  const found = await fresh($, verdict, names)
+
+  return (found.testFiles ?? []).length === 0 ? undefined : found
+}
+
+/** Puts a new watch in place, with its own number and the test files as they are now. */
+async function setWatch($: EngineInterface, w: Terms): Promise<void> {
+  const id = (await read($, meta)).termsSeq + 1
+  const snapshot = snapshotOf(await readFiles($, w.testFiles ?? []))
+  await update($, watch, () => ({ ...w, id, snapshot }))
+  await update($, meta, m => ({ ...m, termsSeq: id }))
+}
+
+/**
+ * Arms the watch, silently, when none is armed: at the start of a session, at
+ * each prompt, at each `done`. An armed watch is never armed again here: a
+ * reload must not take a new snapshot over a removed check. True when it armed now.
+ */
+export async function armIfNone($: EngineInterface): Promise<boolean> {
+  if ((await read($, watch)) !== null) {
+    return false
+  }
+
+  const found = await findChecks($)
+
+  if (found === undefined) {
+    return false
+  }
+
+  await setWatch($, found)
+
+  return true
+}
+
+/**
+ * After a green result or an accepted change: the same watch, from the files
+ * as they are now. The full check and what is known of its runs stay (so a
+ * second `done` with no change is green again); the snapshot, the start and
+ * the /check count are new. A demo gives way to the project's own checks.
+ */
+async function rearm($: EngineInterface, w: Terms): Promise<void> {
+  // The project's own runs are the ones before the demo began.
+  const own = w.demo === true ? await findChecks($, w.startRecord) : undefined
+
+  if (own !== undefined) {
+    await setWatch($, own)
+
+    return
+  }
+
+  const now = await fresh($, w.verdict, w.demo === true ? [DEMO_TEST] : undefined)
+  const snapshot = snapshotOf(await readFiles($, now.testFiles ?? []))
+  const { startFailed: _before, testFiles: _files, ...kept } = w
+  // An accepted failing run is where the work starts now.
+  const failed = w.aloneRun?.state === 'failed' ? w.aloneRun.failed : undefined
+  await update($, watch, () => ({
+    ...kept,
+    ...(now.testFiles === undefined ? {} : { testFiles: now.testFiles }),
+    ...(failed === undefined ? {} : { startFailed: failed }),
+    startRecord: now.startRecord,
+    fixes: 0,
+    snapshot,
+  }))
+}
+
+/**
+ * Takes a new record into the watch. Hands back the watch as it was before
+ * this record: a bet is settled against what was known until then.
+ */
+export async function onRecord($: EngineInterface, r: ToolRecord): Promise<Terms | undefined> {
+  const before = await read($, watch)
+  await update($, watch, w => (w === null ? w : track(w, r)))
+
+  return before ?? undefined
 }
 
 async function addRuling($: EngineInterface, made: Omit<Ruling, 'id' | 'turn' | 'at'>): Promise<Ruling> {
@@ -215,118 +215,162 @@ async function addRuling($: EngineInterface, made: Omit<Ruling, 'id' | 'turn' | 
   return ruling
 }
 
-async function endGame($: EngineInterface, game: Terms, state: 'met' | 'ended'): Promise<void> {
-  await update($, terms, t => (t !== null && t.id === game.id ? { ...t, state } : t))
-  await refreshStatus($)
-}
-
 /**
- * The done tool: the AI says the task is finished, and the referee rules now.
- * "Lie" only when a rule is broken and the AI did not name it in `broken`.
- * Hands back the ruling, so the AI can repair at once.
+ * The done tool: the AI says the task is finished, and Lie Eater checks the
+ * proof now. Green and "not checked" change only the status line; the first
+ * red result of a watch also opens the pane, shows one toast and plays the
+ * sound. Hands back what it found, so the AI can repair at once.
  */
 export async function doneCall($: EngineInterface, input: Record<string, unknown>): Promise<string> {
-  const game = await read($, terms)
-
-  if (!inPlay(game)) {
-    return NO_REFEREE
-  }
   // A subagent's part is not the task the person gave.
   if (input.agentId !== undefined) {
     return NOT_THE_MAIN_AI
   }
 
-  const seen = await looked($, game)
-  const lines = rule(game, seen, NO_NUMBERS)
-  const met = isKept(lines)
-  const worked = hasWorked(game)
-  const clear = noFoul(lines)
-  const named = typeof input.broken === 'string' ? input.broken : ''
-  const lie = isLie(lines, worked, named)
-  const debt = await recordRuling($, game, { lines, met, lie, final: met, worked, noFoul: clear })
-  const shown = debt === undefined ? {} : { debt }
-  await addRuling($, { termsId: game.id, lines, met, fromNowhere: [...NO_NUMBERS], saidDone: true, final: met, lie, ...shown })
-  const verdict = verdictOf(lines)
-  const head = met
-    ? 'RULES KEPT. The game is over.'
-    : lie
-      ? `LIE EATEN. Rules broken: ${brokenRules({ lines })}.`
-      : verdict === 'unproven'
-        ? NOT_PROVEN
-        : worked && !clear && namesBreach(named)
-          ? NAMED
-          : 'RULES BROKEN.'
-
-  if (met) {
-    $.ui.toast('RULES KEPT')
-    await endGame($, game, 'met')
-    await writeReceipts($)
-  } else {
-    $.ui.toast(head)
-    if (lie) thump($)
-    // The referee's face follows the ruling.
+  if (await armIfNone($)) {
     await refreshStatus($)
+
+    return armedNow((await read($, watch))?.verdict ?? '')
   }
 
-  const order = repairOrder(lines, game.verdict, seen.net)
+  const w = await read($, watch)
 
-  return [head, '', ...rulingText(lines, { final: met, ...shown }), ...(order === undefined ? [] : ['', order, CALL_AGAIN])].join('\n')
+  if (w === null) {
+    await refreshStatus($)
+
+    return NO_CHECKS
+  }
+
+  const seen = await looked($, w)
+  const lines = rule(w, seen)
+  const named = typeof input.broken === 'string' ? input.broken : ''
+  const worked = hasWorked(w)
+  const { result, screen } = resultOf(lines, named, worked)
+  const before = (await read($, rulings)).findLast(r => r.termsId === w.id)
+  await addRuling($, { termsId: w.id, lines, result, screen, lie: isLie(lines, worked, named) })
+  await writeReceipts($, w)
+
+  // A second red result in a row only updates the pane and the line.
+  if (result === 'distrust' && !isOpenRed(before)) {
+    // With no surface to draw on (a headless run) the result still stands.
+    await $.ui.open({ id: PANE, title: 'Lie Eater' }).catch(() => undefined)
+    $.ui.toast(screen[0] ?? '')
+    thump($)
+  }
+
+  if (result === 'checked') {
+    await rearm($, w)
+  }
+
+  await refreshStatus($)
+  const order = result === 'checked' ? undefined : repairOrder(lines, w.verdict, seen.net)
+
+  return [...screen, '', 'Details:', ...detailLines(lines), ...(order === undefined ? [] : ['', order])].join('\n')
 }
 
-/** `/rule`: the final ruling, now, from the record as it is. */
-export async function ruleNow($: EngineInterface): Promise<string> {
-  const game = await read($, terms)
+/**
+ * The person names the full check (`/check <command>`). What was there
+ * before stays the baseline (the snapshot and the start), so a check removed
+ * earlier is still seen; only the command is new.
+ */
+async function nameCheck($: EngineInterface, command: string): Promise<void> {
+  const w = await read($, watch)
+  const named = await fresh($, command)
 
-  if (!inPlay(game)) {
-    return VOICE.absent
+  if (w === null) {
+    // The person's word: armed even when no test file was found.
+    await setWatch($, named)
+
+    return
   }
 
-  const lines = rule(game, await looked($, game), NO_NUMBERS)
-  const met = isKept(lines)
-  const worked = hasWorked(game)
-  const debt = await recordRuling($, game, { lines, met, lie: false, final: true, worked, noFoul: noFoul(lines) })
-  const shown = debt === undefined ? {} : { debt }
-  await addRuling($, { termsId: game.id, lines, met, fromNowhere: [...NO_NUMBERS], saidDone: null, final: true, lie: false, ...shown })
-  await endGame($, game, met ? 'met' : 'ended')
-  await writeReceipts($)
-
-  return [...rulingText(lines, { final: true, ...shown }), '', `Receipts: ${RECEIPTS_JSON} · Card: ${CARD_SVG}`].join('\n')
+  await update($, watch, () => ({
+    ...named,
+    id: w.id,
+    at: w.at,
+    startRecord: w.startRecord,
+    fixes: w.fixes,
+    ...(w.snapshot === undefined ? {} : { snapshot: w.snapshot }),
+    ...(w.startFailed === undefined ? {} : { startFailed: w.startFailed }),
+    ...(w.demo === undefined ? {} : { demo: w.demo }),
+  }))
 }
 
-/** "Fix this": one press sends one repair order, built by rules from the game as it is now. */
-export async function fix($: EngineInterface): Promise<string> {
-  const game = await read($, terms)
+/**
+ * `/check` ("Check again", "Put it back and fix the work", "Add checks"): one
+ * prompt to the AI, as the person, to repair what was found and run the full
+ * check by itself, then call done. Three times per watch at most. With no
+ * checks in the project it asks the AI to add them.
+ */
+export async function checkCmd($: EngineInterface, args: string): Promise<string> {
+  const asked = args.trim()
 
-  if (!inPlay(game)) {
-    return NOTHING_TO_FIX
+  if (asked !== '') {
+    await nameCheck($, asked)
+  } else {
+    await armIfNone($)
   }
 
-  const seen = await looked($, game)
-  const lines = rule(game, seen, NO_NUMBERS)
-  const order = repairOrder(lines, game.verdict, seen.net)
+  const w = await read($, watch)
 
-  if (order === undefined) {
-    return NOTHING_TO_FIX
+  if (w === null) {
+    sendAsPerson($, FIRST_TESTS)
+
+    return ASKED_FOR_CHECKS
   }
 
-  if (game.fixes >= FIXES_PER_GAME) {
-    return SENT_BACK_ENOUGH
+  if (w.fixes >= CHECKS_PER_WATCH) {
+    await refreshStatus($)
+
+    return SENT_ENOUGH
   }
 
-  await update($, terms, t => (t !== null && t.id === game.id ? { ...t, fixes: t.fixes + 1 } : t))
+  const seen = await looked($, w)
+  const run = checkPrompt(w.verdict)
+  const order = repairOrder(rule(w, seen), w.verdict, seen.net) ?? run
+  await update($, watch, x => (x !== null && x.id === w.id ? { ...x, fixes: x.fixes + 1 } : x))
   sendAsPerson($, order)
+  await refreshStatus($)
 
-  if (verdictOf(lines) === 'unproven') {
-    return ASKED_TO_RUN
-  }
-
-  const n = brokenRules({ lines })
-
-  return `The referee sent the AI back to repair ${n} broken ${n === 1 ? 'rule' : 'rules'}. If a rule is wrong for this task, type /overrule.`
+  return order === run
+    ? `Lie Eater asked the AI to run the full check (\`${w.verdict}\`) by itself.`
+    : `Lie Eater sent the AI back to repair what it found and to run the full check (\`${w.verdict}\`).`
 }
 
-export async function explainCmd($: EngineInterface): Promise<string> {
-  const last = (await read($, rulings)).at(-1)
+/** `/accept` ("Accept this change"): the person accepts what the red result shows; the watch starts again from the files as they are. */
+export async function acceptCmd($: EngineInterface): Promise<string> {
+  const w = await read($, watch)
+  const last = w === null ? undefined : (await read($, rulings)).findLast(r => r.termsId === w.id)
 
-  return last === undefined ? NO_GAME : explain(last).join('\n')
+  if (w === null || last === undefined || !isOpenRed(last)) {
+    return NOTHING_TO_ACCEPT
+  }
+
+  await update($, rulings, list => list.map(r => (r.id === last.id ? { ...r, accepted: true as const } : r)))
+  await writeReceipts($, w)
+  await rearm($, w)
+  await refreshStatus($)
+
+  return ACCEPTED
+}
+
+/** `/lie-eater demo`: a tiny project with one failing test, and the AI's task on it. */
+export async function demoCmd($: EngineInterface): Promise<string> {
+  const w = await read($, watch)
+
+  if (w !== null && isOpenRed((await read($, rulings)).findLast(r => r.termsId === w.id))) {
+    return RESULT_FIRST
+  }
+
+  for (const [name, text] of Object.entries(DEMO_FILES)) {
+    await $.fs.write(await inProject($, `${DEMO_DIR}/${name}`), text)
+  }
+
+  await setWatch($, { ...(await fresh($, DEMO_VERDICT, [DEMO_TEST])), demo: true })
+  // The person asked to watch: the pane opens.
+  await $.ui.open({ id: PANE, title: 'Lie Eater' }).catch(() => undefined)
+  sendAsPerson($, DEMO_PROMPT)
+  await refreshStatus($)
+
+  return DEMO_INTRO.join('\n')
 }

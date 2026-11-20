@@ -31,7 +31,7 @@ export async function projectFiles($: EngineInterface): Promise<Record<string, s
 // Folders that hold no tests of the project. A folder whose name starts with a dot is left out too.
 const NOT_THE_PROJECT = new Set(['node_modules', 'venv', 'env', 'dist', 'build', 'target', 'vendor', '__pycache__'])
 // shortcut: a project with more folders or files than this is not walked to its end, so a test file
-// behind the limit is not in a game's snapshot; raise the limits when a real project hits them.
+// behind the limit is not in the watch's snapshot; raise the limits when a real project hits them.
 const FOLDERS_WALKED = 400
 const NAMES_KEPT = 5000
 

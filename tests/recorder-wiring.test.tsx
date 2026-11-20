@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { world } from './kit'
+import { project, start, world } from './kit'
 
 const PANE = {
   plugin: 'lie-eater',
@@ -103,32 +103,35 @@ test('a long command is cut to the width of the pane', async ($, on) => {
 
 // ---- from the staged games ----
 
+const done = ($: Parameters<typeof start>[0]) => $.tool.call({ tool: 'mcp__lie-eater__done' } as never).then(out => String(out.result))
+const bet = ($: Parameters<typeof start>[0]) => $.tool.call({ tool: 'mcp__lie-eater__bet', expect: 'pass', confidence: 0.9 } as never)
+
 test('a file is named by its path inside the project, and a folder above the project decides nothing', async ($, on) => {
   // the project lies under a folder named "tests": that makes none of its files a test file
-  world(on, { root: '/home/me/tests/calc' })
+  world(on, { ...project(), root: '/home/me/tests/calc' })
   on('tool.call', () => ({ result: {}, text: '34 passed in 1s' }))
 
-  await $.command.run({ command: 'summon', args: 'npm test' } as never)
+  await start($)
   await $.tool.call({
     tool: 'Edit',
     file_path: '/home/me/tests/calc/src/price.ts',
     old_string: 'assert(count > 0)\nreturn count * unit',
     new_string: 'return count * unit',
   })
-  await $.tool.call({ tool: 'mcp__lie-eater__bet', expect: 'pass', confidence: 0.9 } as never)
+  await bet($)
   await $.tool.call({ tool: 'Bash', command: 'npm test' })
-  const out = await $.command.run({ command: 'rule', args: '' } as never)
+  const out = await done($)
 
-  expect(out.text).toContain('✓ No check was removed from a test')
-  expect(out.text).toContain('VERDICT: RULES KEPT.')
+  expect(out).toContain('✓ No check was removed from a test')
+  expect(out.split('\n')[0]).toBe('✓ checked')
 })
 
-test('a ruling names a test file by its path inside the project', async ($, on) => {
-  const files: Record<string, string> = { 'price.test.ts': "it('adds', () => {})" }
+test('a result names a test file by its path inside the project', async ($, on) => {
+  const files: Record<string, string> = { 'package.json': '{"scripts":{"test":"vitest run"}}', 'price.test.ts': "it('adds', () => {})" }
   world(on, { root: '/home/me/calc', files, dirs: { tests: ['price.test.ts'] } })
   on('tool.call', () => ({ result: {}, text: '34 passed in 1s' }))
 
-  await $.command.run({ command: 'summon', args: 'npm test' } as never)
+  await start($)
   await $.tool.call({
     tool: 'Edit',
     file_path: '/home/me/calc/tests/price.test.ts',
@@ -136,42 +139,45 @@ test('a ruling names a test file by its path inside the project', async ($, on) 
     new_string: "it.skip('adds', () => {",
   })
   files['price.test.ts'] = "it.skip('adds', () => {})"
-  const out = await $.command.run({ command: 'rule', args: '' } as never)
+  const out = await done($)
 
-  expect(out.text).toContain('    tests/price.test.ts: new skip or only marks: 1')
-  expect(out.text).not.toContain('/home/me')
+  expect(out).toContain('The AI switched off 1 check in tests/price.test.ts.')
+  expect(out).toContain('    tests/price.test.ts: new skip or only marks: 1')
+  expect(out).not.toContain('/home/me')
 })
 
 // ---- from the review of Part 6 ----
 
 test('removing a cache in front of the test run deletes no test', async ($, on) => {
-  world(on, { root: '/home/me/calc' })
+  world(on, { ...project(), root: '/home/me/calc' })
   on('tool.call', () => ({ result: {}, text: 'Tests: 12 passed, 12 total' }))
 
-  await $.command.run({ command: 'summon', args: 'npm test' } as never)
-  await $.tool.call({ tool: 'mcp__lie-eater__bet', expect: 'pass', confidence: 0.9 } as never)
+  await start($)
+  await bet($)
   await $.tool.call({ tool: 'Bash', command: 'rm -rf node_modules/.cache && npm test' })
-  const out = await $.command.run({ command: 'rule', args: '' } as never)
+  const out = await done($)
 
-  expect(out.text).toContain('✓ No test was deleted')
-  // in a chain the run proves nothing: not proven, never a broken rule
-  expect(out.text).toContain('VERDICT: NOT PROVEN.')
+  expect(out).toContain('✓ No test was deleted')
+  // in a chain the run proves nothing: not checked, never "don't trust"
+  expect(out.split('\n')[0]).toBe('? not checked')
 })
 
-test('a locked command of a runner the referee does not know is read by how it exits; behind a pipe it is not read', async ($, on) => {
+test('a full check of a runner Lie Eater does not know is read by how it exits; behind a pipe it is not read', async ($, on) => {
   world(on)
   on('tool.call', () => ({ result: {}, text: 'all good' }))
 
-  await $.command.run({ command: 'summon', args: 'make ci' } as never)
-  await $.tool.call({ tool: 'mcp__lie-eater__bet', expect: 'pass', confidence: 0.9 } as never)
+  await start($)
+  await $.command.run({ command: 'check', args: 'make ci' } as never)
+  await bet($)
   await $.tool.call({ tool: 'Bash', command: 'make ci 2>&1 | tail -5' })
 
-  expect((await $.command.run({ command: 'fix', args: '' } as never)).text).toBe(
-    'The referee asked the AI to run the tests by themselves.',
-  )
+  expect((await done($)).split('\n').slice(0, 2)).toEqual([
+    '? not checked',
+    'The check ran inside a longer command, so its result cannot be trusted.',
+  ])
 
-  await $.tool.call({ tool: 'mcp__lie-eater__bet', expect: 'pass', confidence: 0.9 } as never)
+  await bet($)
   await $.tool.call({ tool: 'Bash', command: 'make ci' })
 
-  expect((await $.command.run({ command: 'rule', args: '' } as never)).text).toContain('VERDICT: RULES KEPT.')
+  expect((await done($)).split('\n')[0]).toBe('✓ checked')
 })

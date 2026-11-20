@@ -1,37 +1,18 @@
-// The house: the ledger file in the person's repository, the Debt, the status
-// line and the overrule. "The house always collects": a broken game leaves a
-// debt that only a kept game repays.
+// What Lie Eater keeps in the person's repository (the ledger of bets, the
+// receipts and the card) and the one status line.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Bet, Ledger, RulingLine, Terms } from '../../types'
-import { score, youWon } from './bets'
-import { flagOf, gitRemote, moodOf, refereeNumber, statusLine } from './flag'
-import {
-  EMPTY_LEDGER,
-  LEDGER_PATH,
-  addBet,
-  addDebt,
-  addGame,
-  dropGame,
-  forgive,
-  isLedgerText,
-  openDebt,
-  overrule,
-  parseLedger,
-  repay,
-  streak,
-} from './ledger'
-import { inProject, projectFiles, projectNames } from './project'
+import type { Bet, Ledger, Terms } from '../../types'
+import { youWon } from './bets'
 import { cardSvg } from './card'
+import { EMPTY_LEDGER, LEDGER_PATH, addBet, isLedgerText, parseLedger } from './ledger'
+import { inProject } from './project'
 import { CARD_SVG, RECEIPTS_JSON, RECEIPTS_MD, buildReceipt, receiptToMarkdown } from './receipts'
+import { nowOf } from './result'
 import { META_START, SHAPE } from './state'
-import { detectVerdict, packageTestScript, summon } from './terms'
-import { VOICE, verdictOf } from './words'
 
 // Each file that touches state declares its own atoms (see state.ts).
-const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
-const terms = atom({ plugin: 'lie-eater', key: 'terms' } as const, null, { shape: SHAPE.terms })
 const watch = atom({ plugin: 'lie-eater', key: 'watch' } as const, null, { shape: SHAPE.watch })
 const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SHAPE.bets })
 const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { shape: SHAPE.rulings })
@@ -45,60 +26,27 @@ async function today($: EngineInterface): Promise<string> {
   return new Date(await $.clock.now()).toISOString()
 }
 
-async function change($: EngineInterface, fn: (l: Ledger) => Ledger): Promise<Ledger> {
+async function change($: EngineInterface, fn: (l: Ledger) => Ledger): Promise<void> {
   let next = EMPTY_LEDGER
   await update($, ledger, l => {
     next = fn(l)
 
     return next
   })
-  // A folder that cannot be written to must not stop a ruling: the session keeps its copy.
+  // A folder that cannot be written to must not stop a result: the session keeps its copy.
   await $.fs.write(await inProject($, LEDGER_PATH), `${JSON.stringify(next, null, 2)}\n`).catch(() => undefined)
-
-  return next
 }
 
-/**
- * The one pinned line: the referee's face and number, whether a game is in
- * play and its bets, the flag, the open debt.
- */
+/** The one status line: what the person may believe about "done" right now. */
 export async function refreshStatus($: EngineInterface): Promise<void> {
-  const game = await read($, terms)
-  const present = game?.state === 'in play'
-  const all = await read($, bets)
-  const rulingsNow = await read($, rulings)
-  const lastOfGame = present ? rulingsNow.findLast(r => r.termsId === game.id) : undefined
-  const last = rulingsNow.at(-1)
-  const settled = all.filter(b => b.state === 'won' || b.state === 'lost')
-  const s = score(settled.map(b => ({ confidence: b.confidence, won: b.state === 'won' })))
-  const flag = flagOf(await read($, watch))
-  const debt = openDebt(await read($, ledger)).length
-  const number = (await read($, meta)).referee
+  const w = await read($, watch)
+  const last = w === null ? undefined : (await read($, rulings)).findLast(r => r.termsId === w.id)
 
-  $.ui.status(
-    statusLine({
-      mood: moodOf({
-        hasOpenBet: all.some(b => b.state === 'open'),
-        isBroken: lastOfGame !== undefined && verdictOf(lastOfGame.lines) === 'broken' && lastOfGame.overruled !== true,
-        isKept: last !== undefined && last.final && last.met,
-        ...(flag === undefined ? {} : { flag }),
-        debt,
-      }),
-      ...(number === undefined ? {} : { number }),
-      present,
-      ...(s === undefined ? {} : { bets: { won: s.won, n: s.n } }),
-      ...(flag === undefined ? {} : { flag }),
-      debt,
-    }),
-  )
+  $.ui.status(nowOf({ armed: w !== null, changed: w !== null && w.lastCodeEdit > w.startRecord, ...(last === undefined ? {} : { last }) }).status)
 }
 
-/**
- * The start of a session: the ledger file is the truth; the repository's
- * referee gets his number; and the watch starts when the project's test
- * command can be found, so the flag works with no summon.
- */
-export async function loadLedger($: EngineInterface, cwd = ''): Promise<void> {
+/** The start of a session: the ledger file is the truth for the bets. */
+export async function loadLedger($: EngineInterface): Promise<void> {
   const text = await $.fs.read(await inProject($, LEDGER_PATH)).catch(() => undefined)
 
   // A file this version cannot read (a newer version, a merge conflict) is the
@@ -109,43 +57,11 @@ export async function loadLedger($: EngineInterface, cwd = ''): Promise<void> {
 
   const found = parseLedger(text)
   await update($, ledger, () => found)
-  const debt = openDebt(found).length
-
-  if (debt > 0 && (await read($, terms))?.state !== 'in play') {
-    $.ui.toast(`${VOICE.remembers} Debt: ${debt}.`)
-  }
-
-  const remote = gitRemote(await $.fs.read(await inProject($, '.git/config')).catch(() => undefined))
-  const number = refereeNumber(remote ?? cwd.split('/').filter(part => part !== '').at(-1) ?? '')
-  await update($, meta, m => ({ ...m, ...(number === undefined ? {} : { referee: number }) }))
-
-  if ((await read($, watch)) === null) {
-    const files = await projectFiles($)
-    const names = await projectNames($)
-    const verdict = detectVerdict(files, names)
-
-    if (verdict !== undefined) {
-      const at = await $.clock.now()
-      const seenSoFar = await read($, records)
-      await update($, watch, () => summon(verdict, { id: 0, at }, seenSoFar, packageTestScript(files['package.json']), names))
-    }
-  }
-
-  await refreshStatus($)
-}
-
-/** What the agent is told about the debt when it places a bet. */
-export async function debtNote($: EngineInterface): Promise<string> {
-  const debt = openDebt(await read($, ledger)).length
-
-  return debt === 0
-    ? ''
-    : ` Open debt in this repository: ${debt}. Only a game that ends with the rules kept repays it.`
 }
 
 export async function recordBet($: EngineInterface, b: Bet): Promise<void> {
-  // A demo game leaves nothing in the ledger.
-  if ((b.state !== 'won' && b.state !== 'lost') || (await read($, terms))?.demo === true) {
+  // A demo leaves nothing in the ledger.
+  if ((b.state !== 'won' && b.state !== 'lost') || (await read($, watch))?.demo === true) {
     return
   }
 
@@ -156,108 +72,18 @@ export async function recordBet($: EngineInterface, b: Bet): Promise<void> {
   )
 }
 
-/**
- * Takes a ruling into the ledger: a lie or a game that ends broken makes a
- * debt, a game that ends kept repays all of it. The house does not collect
- * when nothing was played (`worked` false), or when the only broken rule is
- * tests that already failed before the game, or the referee could not read the
- * test run (`noFoul`): such a game counts as neither kept nor broken. For a final ruling, hands back the debt before
- * this game and now, when the two differ.
- */
-export async function recordRuling(
-  $: EngineInterface,
-  game: Terms,
-  r: { lines: readonly RulingLine[]; met: boolean; lie: boolean; final: boolean; worked: boolean; noFoul: boolean },
-): Promise<[number, number] | undefined> {
-  if ((!r.lie && !r.final) || game.demo === true) {
-    return undefined
-  }
-
-  const before = openDebt(await read($, ledger)).filter(d => d.termsAt !== game.at).length
-  const at = await today($)
-  const failed = r.lines.filter(l => !l.pass && !l.soft).map(l => l.term)
-  const collects = !r.met && r.worked && !r.noFoul
-  const next = await change($, l => {
-    const charged = collects ? addDebt(l, game, failed, at) : l
-
-    if (!r.final) {
-      return charged
-    }
-
-    if (r.met) {
-      return addGame(repay(charged, at), { at, termsAt: game.at, kept: true })
-    }
-
-    return collects ? addGame(charged, { at, termsAt: game.at, kept: false }) : charged
-  })
-  const after = openDebt(next).length
-
-  return r.final && before !== after ? [before, after] : undefined
-}
-
-/** Writes the receipts of the last game into the person's repository. */
-export async function writeReceipts($: EngineInterface): Promise<void> {
-  const game = await read($, terms)
-
-  if (game === null) {
-    return
-  }
-
+/** Writes the receipts and the card of this watch into the person's repository. */
+export async function writeReceipts($: EngineInterface, w: Terms): Promise<void> {
   const receipt = buildReceipt({
-    terms: game,
+    watch: w,
     rulings: await read($, rulings),
     bets: await read($, bets),
     unbet: (await read($, meta)).unbet,
     ledger: await read($, ledger),
     createdAt: await today($),
   })
-  // A folder that cannot be written to must not stop a ruling.
+  // A folder that cannot be written to must not stop a result.
   await $.fs.write(await inProject($, RECEIPTS_JSON), `${JSON.stringify(receipt, null, 2)}\n`).catch(() => undefined)
   await $.fs.write(await inProject($, RECEIPTS_MD), receiptToMarkdown(receipt)).catch(() => undefined)
-  const { referee } = await read($, meta)
-  const card = cardSvg(receipt, { ...(referee === undefined ? {} : { referee }), streak: streak(await read($, ledger)) })
-  await $.fs.write(await inProject($, CARD_SVG), card).catch(() => undefined)
-}
-
-/**
- * `/overrule`: the person overrules the newest broken ruling of the last game.
- * `/overrule debt` clears every open debt, also one from an earlier session.
- */
-export async function overruleCmd($: EngineInterface, args: string): Promise<string> {
-  const open = openDebt(await read($, ledger)).length
-
-  if (args.trim() === 'debt') {
-    if (open === 0) {
-      return 'No open debt.'
-    }
-
-    const at = await today($)
-    await change($, l => forgive(l, at))
-    await refreshStatus($)
-
-    return `${VOICE.yields}\n${open === 1 ? '1 debt is' : `${open} debts are`} cleared.`
-  }
-
-  const game = await read($, terms)
-  // A game that ended with the rules kept has nothing to overrule: its lie was repaid.
-  const target =
-    game === null || game.state === 'met'
-      ? undefined
-      : (await read($, rulings)).findLast(r => r.termsId === game.id && !r.met && r.overruled !== true)
-
-  if (game === null || target === undefined) {
-    return open === 0
-      ? 'No ruling to overrule.'
-      : `No ruling to overrule in this session. Open debt: ${open}. Type /overrule debt to clear it.`
-  }
-
-  await update($, rulings, list => list.map(r => (r.id === target.id ? { ...r, overruled: true } : r)))
-  // The person has decided: the game is over, and it counts as neither kept nor broken.
-  await update($, terms, t => (t !== null && t.id === game.id && t.state === 'in play' ? { ...t, state: 'ended' as const } : t))
-  const at = await today($)
-  await change($, l => dropGame(overrule(l, game.at, at), game.at))
-  await refreshStatus($)
-  await writeReceipts($)
-
-  return `${VOICE.yields}\nRuling #${target.id} is overruled. The receipt says so.`
+  await $.fs.write(await inProject($, CARD_SVG), cardSvg(receipt)).catch(() => undefined)
 }

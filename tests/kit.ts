@@ -159,6 +159,17 @@ export async function paneLines($: Engine): Promise<string[]> {
 }
 
 export const run = ($: Engine, command: string, args = '') => $.command.run({ command, args } as never)
+export const start = ($: Engine) => $.session.start({ cwd: '/home/me/calc', surface: 'terminal', isInteractive: true })
+export const prompt = ($: Engine, text = 'go on') => $.prompt.submit({ text } as never)
+export const editCode = ($: Engine, path = 'src/a.ts') => $.tool.call({ tool: 'Edit', file_path: path, old_string: 'a', new_string: 'b' })
+
+export const PKG = '{"scripts":{"test":"vitest run"}}'
+export const MATH = "it('adds', () => {\n  expect(add(1, 2)).toBe(3)\n})\n\nit('subtracts', () => {\n  expect(sub(3, 2)).toBe(1)\n})\n"
+/** A project with checks: `npm test` in package.json and one test file. `files` may be changed by the test. */
+export const project = (files: Record<string, string> = { 'package.json': PKG, 'math.test.ts': MATH }): World & { files: Record<string, string> } => ({
+  files,
+  dirs: { tests: ['math.test.ts'] },
+})
 export const bash = ($: Engine, command: string) => $.tool.call({ tool: 'Bash', command })
 export const bet = ($: Engine, expect: 'pass' | 'fail' = 'pass', confidence = expect === 'pass' ? 0.9 : 0.55) =>
   $.tool.call({ tool: 'mcp__lie-eater__bet', expect, confidence } as never)

@@ -1,6 +1,6 @@
 {
   "name": "lie-eater",
   "version": "0.1.0",
-  "description": "Summon a neutral referee: the rules are locked before the AI works, it must bet before each test run, and the referee rules from the record.",
+  "description": "An AI can say 'done' after it made the checks easier. Lie Eater checks the proof before you believe it.",
   "types": "./types/index.d.ts"
 }

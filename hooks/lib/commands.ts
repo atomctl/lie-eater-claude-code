@@ -122,7 +122,7 @@ const isRun = (step: string): boolean => kindOf(step) === 'test' || kindOf(step)
 
 /**
  * When the exit code is hidden, the counts in the output decide. But only if
- * the run's own output reaches the referee whole:
+ * the run's own output is there whole:
  *  - the command holds no summary words itself (`; echo "12 passed"`);
  *  - the run's output is not sent to a file;
  *  - from the run, a pipe leads only to `tail`, `head`, `tee` or `cat`, and not to `tail -0`;

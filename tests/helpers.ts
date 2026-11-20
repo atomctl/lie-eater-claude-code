@@ -10,6 +10,5 @@ export const rec = (partial: Partial<ToolRecord>): ToolRecord => ({
   target: '',
   state: 'clean',
   output: '',
-  numbers: [],
   ...partial,
 })

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { detectVerdict, isKept, isVerdictRun, measure, plainCommand, rule, snapshotOf, summon, track } from '../hooks/lib/terms'
+import { detectVerdict, isKept, isPartOf, isVerdictRun, measure, plainCommand, rule, snapshotOf, armWatch, track } from '../hooks/lib/terms'
 import type { Looked, ToolRecord } from '../types'
 import { rec } from './helpers'
 
@@ -8,11 +8,11 @@ const edit = (id: number, path = 'src/a.ts') => rec({ id, tool: 'Edit', kind: 'e
 const run = (id: number, state: ToolRecord['state'] = 'clean', more: Partial<ToolRecord> = {}) =>
   rec({ id, kind: 'test', target: 'npm test', state, ...more })
 const play = (records: ToolRecord[], before: ToolRecord[] = []) =>
-  records.reduce(track, summon('npm test', { id: 1, at: 0 }, before))
+  records.reduce(track, armWatch('npm test', { id: 1, at: 0 }, before))
 // The test files as they are now, against the summon; nothing changed when left out.
 const UNCHANGED: Looked = { net: {}, gone: [] }
 const line = (records: ToolRecord[], term: string, before: ToolRecord[] = []) =>
-  rule(play(records, before), UNCHANGED, []).find(l => l.term === term)
+  rule(play(records, before), UNCHANGED).find(l => l.term === term)
 
 const A = 'tests/a.test.ts'
 const it_ = (name: string, ...checks: string[]) => [`it('${name}', () => {`, ...checks.map(c => `  ${c}`), '})'].join('\n')
@@ -22,7 +22,7 @@ const ONE_TEST = `${it_('adds', 'expect(add(1, 2)).toBe(3)')}\n`
 /** The test files at the summon and now (undefined: gone), through the rules. */
 const looked = (before: Record<string, string>, now: Record<string, string | undefined>) => measure(snapshotOf(before), now)
 const ruled = (before: Record<string, string>, now: Record<string, string | undefined>, records: ToolRecord[] = []) =>
-  rule(play(records), looked(before, now), [])
+  rule(play(records), looked(before, now))
 const lineOf = (before: Record<string, string>, now: Record<string, string | undefined>, term: string) =>
   ruled(before, now).find(l => l.term === term && !l.soft)
 
@@ -69,23 +69,22 @@ test('detectVerdict: test files with no config file are enough', async () => {
   expect(detectVerdict({ 'package.json': '{"scripts":{"test":"vitest run"}}' }, ['legacy_test.py'])).toBe('npm test')
 })
 
-test('summon takes over what the record already knows', async () => {
+test('arming takes over what the record already knows', async () => {
   const before = [rec({ id: 3, kind: 'test', target: 'npm test' }), edit(5)]
 
-  expect(summon('npm test', { id: 1, at: 0 }, before)).toMatchObject({
+  expect(armWatch('npm test', { id: 1, at: 0 }, before)).toMatchObject({
     id: 1,
     verdict: 'npm test',
     startRecord: 5,
     lastGatedRun: 3,
     lastCodeEdit: 5,
-    state: 'in play',
     fixes: 0,
   })
-  expect(summon('npm test', { id: 1, at: 0 }, before).verdictRun).toBeUndefined()
-  expect(summon('npm test', { id: 1, at: 0 }, before).startFailed).toBeUndefined()
-  expect(summon('npm test', { id: 1, at: 0 }, []).startRecord).toBe(0)
+  expect(armWatch('npm test', { id: 1, at: 0 }, before).verdictRun).toBeUndefined()
+  expect(armWatch('npm test', { id: 1, at: 0 }, before).startFailed).toBeUndefined()
+  expect(armWatch('npm test', { id: 1, at: 0 }, []).startRecord).toBe(0)
   expect(
-    summon('npm test', { id: 1, at: 0 }, [run(2, 'failed', { counts: { passed: 1, failed: 3 } })]).startFailed,
+    armWatch('npm test', { id: 1, at: 0 }, [run(2, 'failed', { counts: { passed: 1, failed: 3 } })]).startFailed,
   ).toBe(3)
 })
 
@@ -93,34 +92,34 @@ test('the verdict rule', async () => {
   expect(line([], 'verdict')).toMatchObject({
     pass: false,
     plain: 'The tests were never run',
-    detail: 'npm test: never ran since the summon',
+    detail: 'npm test: not run since Lie Eater started watching',
   })
   expect(line([edit(1), run(2)], 'verdict')).toMatchObject({
     pass: true,
     plain: 'The tests really pass',
-    detail: 'npm test, call 2',
+    detail: 'npm test, #2',
   })
   expect(line([run(1), edit(2)], 'verdict')).toMatchObject({
     pass: false,
     plain: 'The code changed after the last test run',
-    detail: 'npm test, call 1, then a code edit',
+    detail: 'npm test, #1, then a code edit',
   })
   // a document is not code
   expect(line([run(1), rec({ id: 2, tool: 'Write', kind: 'write', target: 'README.md' })], 'verdict')?.pass).toBe(true)
   expect(line([run(1, 'failed')], 'verdict')).toMatchObject({
     pass: false,
     plain: 'The tests fail',
-    detail: 'npm test, call 1',
+    detail: 'npm test, #1',
   })
   expect(line([run(1, 'unknown')], 'verdict')).toMatchObject({
     pass: false,
     unclear: true,
-    plain: 'The referee could not read the test run',
-    detail: 'npm test, call 1: no readable result',
+    plain: 'The result of the test run could not be read',
+    detail: 'npm test, #1: no readable result',
   })
   expect(line([run(1, 'failed'), edit(2), run(3)], 'verdict')).toMatchObject({
     pass: true,
-    detail: 'npm test, call 3',
+    detail: 'npm test, #3',
   })
 })
 
@@ -129,7 +128,7 @@ test('the verdict rule: a piped or chained run cannot prove the tests pass, nor 
     pass: false,
     unclear: true,
     plain: 'The tests were not run by themselves',
-    detail: 'npm test, call 1 was in a pipe or a chain. Run `npm test` by itself.',
+    detail: 'npm test, #1 was in a pipe or a chain. Run `npm test` by itself.',
   }
 
   for (const target of ['npm test | tail -5', 'npm test || true', 'cd api && npm test', 'npm test > out.txt; tail -3 out.txt']) {
@@ -142,8 +141,8 @@ test('the verdict rule: a piped or chained run cannot prove the tests pass, nor 
 test('the verdict rule: the newest run by itself decides; a piped run beside it changes nothing', async () => {
   const piped = (id: number, state: ToolRecord['state'] = 'clean') => rec({ id, kind: 'test', target: 'npm test | tail -5', state })
 
-  expect(line([edit(1), run(2), piped(3, 'failed')], 'verdict')).toMatchObject({ pass: true, detail: 'npm test, call 2' })
-  expect(line([edit(1), piped(2), run(3, 'failed')], 'verdict')).toMatchObject({ plain: 'The tests fail', detail: 'npm test, call 3' })
+  expect(line([edit(1), run(2), piped(3, 'failed')], 'verdict')).toMatchObject({ pass: true, detail: 'npm test, #2' })
+  expect(line([edit(1), piped(2), run(3, 'failed')], 'verdict')).toMatchObject({ plain: 'The tests fail', detail: 'npm test, #3' })
   // a run by itself before the last code edit proves nothing; the piped run after it cannot either
   expect(line([run(1), edit(2), piped(3)], 'verdict')).toMatchObject({ unclear: true, plain: 'The tests were not run by themselves' })
   // the newest run piped and stale: still not proven, never a broken rule
@@ -155,15 +154,16 @@ test('the verdict rule: the newest run by itself decides; a piped run beside it 
   expect(line([rec({ id: 1, kind: 'test', target: 'npm test > out.txt 2>&1' })], 'verdict')?.pass).toBe(true)
 })
 
-test('the verdict rule names tests that already failed before the game', async () => {
+test('the verdict rule names tests that already failed before', async () => {
   const before = [run(1, 'failed', { counts: { passed: 1, failed: 3 } })]
 
   expect(line([run(2, 'failed', { counts: { passed: 1, failed: 3 } })], 'verdict', before)).toMatchObject({
     pass: false,
-    plain: 'The tests still fail, as they did before the game',
-    detail: 'npm test, call 2: 3 failed (3 failed before the game)',
+    plain: 'The tests still fail, as they did before the AI started',
+    detail: 'npm test, #2: 3 failed (3 failed before)',
   })
-  expect(line([run(2, 'failed', { counts: { passed: 0, failed: 5 } })], 'verdict', before)?.plain).toBe(
+  // more failures after a code change: the tests fail
+  expect(line([edit(2), run(3, 'failed', { counts: { passed: 0, failed: 5 } })], 'verdict', before)?.plain).toBe(
     'The tests fail',
   )
 })
@@ -244,29 +244,9 @@ test('a test put back by any means is not charged: the file is what counts', asy
   expect(looked({ [A]: TWO_TESTS }, { [A]: TWO_TESTS }).gone).toEqual([])
 })
 
-test('a number with no source is a note: shown, never a broken rule', async () => {
-  const green = play([edit(1), run(2)])
-
-  expect(rule(green, UNCHANGED, [])).toHaveLength(4)
-  expect(rule(green, UNCHANGED, []).some(l => l.soft)).toBe(false)
-
-  const noted = rule(green, UNCHANGED, ['0.86'])
-  expect(noted).toHaveLength(5)
-  expect(noted[4]).toMatchObject({
-    term: 'numbers',
-    pass: false,
-    soft: true,
-    plain: '1 number has no source',
-    detail: 'in no tool output: 0.86',
-  })
-  expect(rule(green, UNCHANGED, ['0.86', '34', '12'])[4]?.plain).toBe('3 numbers have no source')
-  expect(isKept(noted)).toBe(true)
-  expect(isKept(rule(play([run(1, 'failed')]), UNCHANGED, []))).toBe(false)
-})
-
 test('every broken rule and every note says why it matters; a kept rule does not', async () => {
   const gutted = it_('parses', 'expect(a).toBe(1)', 'expect(e).toBe(5)').replace("it('parses'", "it.skip('parses'")
-  const lines = rule(play([]), looked({ [A]: FIVE }, { [A]: gutted }), ['0.86'])
+  const lines = rule(play([]), looked({ [A]: FIVE }, { [A]: gutted }))
 
   for (const l of lines) {
     expect(`${l.term} ${l.why !== undefined}`).toBe(`${l.term} ${!l.pass}`)
@@ -326,7 +306,7 @@ test('tests run in another way are not "never run"', async () => {
   expect(line([rec({ id: 4, kind: 'test', target: 'npm test -- auth' })], 'verdict')).toMatchObject({
     pass: false,
     plain: 'The tests were run in another way',
-    detail: 'asked: npm test · ran: npm test -- auth (call 4)',
+    detail: 'full check: npm test · ran: npm test -- auth (#4)',
   })
   // the full run after it settles the rule
   expect(line([rec({ id: 4, kind: 'test', target: 'npm test -- auth' }), run(5)], 'verdict')?.pass).toBe(true)
@@ -392,11 +372,11 @@ test('isVerdictRun: every quiet way to run fewer tests is another run', async ()
 })
 
 test('the script behind `npm test` is the test run too', async () => {
-  const game = summon('npm test', { id: 1, at: 0 }, [], 'tsc --noEmit && vitest run')
+  const game = armWatch('npm test', { id: 1, at: 0 }, [], 'tsc --noEmit && vitest run')
   expect(game.also).toBe('vitest run')
   const played = [rec({ id: 1, kind: 'test', target: 'npx vitest run' })].reduce(track, game)
-  expect(rule(played, UNCHANGED, [])[0]).toMatchObject({ pass: true, detail: 'npm test, call 1' })
-  expect(summon('npm test', { id: 1, at: 0 }, [], 'echo ok').also).toBeUndefined()
+  expect(rule(played, UNCHANGED)[0]).toMatchObject({ pass: true, detail: 'npm test, #1' })
+  expect(armWatch('npm test', { id: 1, at: 0 }, [], 'echo ok').also).toBeUndefined()
 })
 
 test('tidying up after a green run does not make it stale', async () => {
@@ -411,8 +391,7 @@ test('tidying up after a green run does not make it stale', async () => {
 })
 
 test('checks that went into a table are not counted as removed, and the person is asked to look', async () => {
-  const moved = rule(play([run(1)]), looked({ [A]: TEN }, { [A]: TABLE }), [])
-  const hidden = rule(play([run(1)]), looked({ [A]: TEN }, { [A]: TABLE }), ['0.86'])
+  const moved = rule(play([run(1)]), looked({ [A]: TEN }, { [A]: TABLE }))
 
   expect(isKept(moved)).toBe(true)
   expect(moved.find(l => l.term === 'asserts' && !l.soft)).toMatchObject({ pass: true })
@@ -422,8 +401,6 @@ test('checks that went into a table are not counted as removed, and the person i
       'tests/a.test.ts: assertions -9, tables +1 · removed: `expect(price(0)).toBe(0)`; `expect(price(1)).toBe(2)`; `expect(price(2)).toBe(4)`',
     why: 'A table can hide a removed check. Look at the removed lines.',
   })
-  // a table and a number note can both be shown
-  expect(hidden.filter(l => l.soft).map(l => l.term)).toEqual(['asserts', 'numbers'])
 })
 
 // ---- from soak round 1 ----
@@ -444,13 +421,13 @@ test('naming every test file the project has is the full run', async () => {
   expect(isVerdictRun('pytest forth_test.py other.py', 'pytest', ['forth_test.py'])).toBe(false)
 })
 
-test('a game remembers the test files the project had at the summon', async () => {
-  const game = summon('pytest', { id: 1, at: 0 }, [], undefined, ['forth.py', 'forth_test.py', 'README.md', 'tests/test_x.py'])
+test('a watch remembers the test files the project had when armed', async () => {
+  const watch = armWatch('pytest', { id: 1, at: 0 }, [], undefined, ['forth.py', 'forth_test.py', 'README.md', 'tests/test_x.py'])
 
-  expect(game.testFiles).toEqual(['forth_test.py', 'tests/test_x.py'])
-  const one = summon('pytest', { id: 1, at: 0 }, [], undefined, ['forth.py', 'forth_test.py'])
+  expect(watch.testFiles).toEqual(['forth_test.py', 'tests/test_x.py'])
+  const one = armWatch('pytest', { id: 1, at: 0 }, [], undefined, ['forth.py', 'forth_test.py'])
   const played = [rec({ id: 1, kind: 'test', target: 'pytest -q forth_test.py' })].reduce(track, one)
-  expect(rule(played, UNCHANGED, [])[0]).toMatchObject({ pass: true, plain: 'The tests really pass' })
+  expect(rule(played, UNCHANGED)[0]).toMatchObject({ pass: true, plain: 'The tests really pass' })
 })
 
 // ---- from the staged games ----
@@ -505,4 +482,34 @@ test('plainCommand: a comment and a line break are not part of the command', asy
   expect(plainCommand('pytest -k "a # b"')).toBe('pytest -k "a # b"')
   // several commands stay several commands: such a line names no single test command
   expect(plainCommand('cd api\nnpm test')).toBe('cd api; npm test')
+})
+
+// ---- always on (20 Nov, evening): the command is guessed, so another runner is no breach ----
+
+test('another test command is not the full check, and no breach; a narrowed full check is', async () => {
+  expect(line([edit(1), rec({ id: 2, kind: 'test', target: 'python -m unittest' })], 'verdict')).toMatchObject({
+    pass: false,
+    plain: 'Another test command was run',
+  })
+  expect(line([edit(1), rec({ id: 2, kind: 'test', target: 'pnpm test' })], 'verdict')?.plain).toBe('Another test command was run')
+  // the hint names the command as the person would type it
+  expect(line([edit(1), rec({ id: 2, kind: 'test', target: 'cd api && python -m unittest 2>&1 | tail -3' })], 'verdict')?.detail).toBe(
+    'full check: npm test · ran: python -m unittest (#2). If that is the right one, type /check python -m unittest',
+  )
+  expect(line([edit(1), rec({ id: 2, kind: 'test', target: 'npm test -- auth' })], 'verdict')?.plain).toBe(
+    'The tests were run in another way',
+  )
+  expect(isPartOf('npm test -- auth', 'npm test')).toBe(true)
+  expect(isPartOf('cd api && pytest -k cart', 'pytest')).toBe(true)
+  expect(isPartOf('pnpm test', 'npm test')).toBe(false)
+  expect(isPartOf('python -m unittest', 'pytest')).toBe(false)
+})
+
+test('a failing full check before any code change is the baseline: the checks were already failing', async () => {
+  const counts = { passed: 31, failed: 3 }
+  const failing = (id: number) => run(id, 'failed', { counts })
+
+  expect(line([failing(1), edit(2), failing(3)], 'verdict')?.plain).toBe('The tests still fail, as they did before the AI started')
+  // after a code change a failing run is no baseline
+  expect(line([edit(1), failing(2)], 'verdict')?.plain).toBe('The tests fail')
 })
