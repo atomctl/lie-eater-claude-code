@@ -20,9 +20,11 @@ import {
   overrule,
   parseLedger,
   repay,
+  streak,
 } from './ledger'
 import { projectFiles, projectNames } from './project'
-import { RECEIPTS_JSON, RECEIPTS_MD, buildReceipt, receiptToMarkdown } from './receipts'
+import { cardSvg } from './card'
+import { CARD_SVG, RECEIPTS_JSON, RECEIPTS_MD, buildReceipt, receiptToMarkdown } from './receipts'
 import { META_START, SHAPE } from './state'
 import { detectVerdict, packageTestScript, summon } from './terms'
 import { VOICE } from './words'
@@ -142,7 +144,8 @@ export async function debtNote($: EngineInterface): Promise<string> {
 }
 
 export async function recordBet($: EngineInterface, b: Bet): Promise<void> {
-  if (b.state !== 'won' && b.state !== 'lost') {
+  // A demo game leaves nothing in the ledger.
+  if ((b.state !== 'won' && b.state !== 'lost') || (await read($, terms))?.demo === true) {
     return
   }
 
@@ -163,7 +166,7 @@ export async function recordRuling(
   game: Terms,
   r: { lines: readonly RulingLine[]; met: boolean; lie: boolean; final: boolean; worked: boolean; onlyOld: boolean },
 ): Promise<[number, number] | undefined> {
-  if (!r.lie && !r.final) {
+  if ((!r.lie && !r.final) || game.demo === true) {
     return undefined
   }
 
@@ -208,6 +211,9 @@ export async function writeReceipts($: EngineInterface): Promise<void> {
   // A folder that cannot be written to must not stop a ruling.
   await $.fs.write(RECEIPTS_JSON, `${JSON.stringify(receipt, null, 2)}\n`).catch(() => undefined)
   await $.fs.write(RECEIPTS_MD, receiptToMarkdown(receipt)).catch(() => undefined)
+  const { referee } = await read($, meta)
+  const card = cardSvg(receipt, { ...(referee === undefined ? {} : { referee }), streak: streak(await read($, ledger)) })
+  await $.fs.write(CARD_SVG, card).catch(() => undefined)
 }
 
 /**

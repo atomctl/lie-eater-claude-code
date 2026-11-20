@@ -146,7 +146,7 @@ test('a game that ends writes its receipts; a ruling "so far" does not', async (
   expect(written('.lie-eater/receipts.json')).toBeUndefined()
 
   const out = await run($, 'rule')
-  expect(out.text?.split('\n').at(-1)).toBe('Receipts: .lie-eater/receipts.json')
+  expect(out.text?.split('\n').at(-1)).toBe('Receipts: .lie-eater/receipts.json · Card: .lie-eater/card.svg')
   const receipt = JSON.parse(written('.lie-eater/receipts.json') ?? '{}')
   expect(receipt).toMatchObject({ format: 'lie-eater/receipts', version: 1, terms: { verdict: 'npm test' } })
   expect(receipt.rulings).toHaveLength(2)
@@ -279,4 +279,28 @@ test('the house does not collect for tests that failed before the game', async (
   expect(out.text).not.toContain('Debt')
   expect(ledgerOf(seen).debt).toEqual([])
   expect(ledgerOf(seen).games).toEqual([])
+})
+
+// ---- the card ----
+
+test('a game that ends writes its card', async ($, on) => {
+  const seen = world(on, {
+    label: () => DONE,
+    files: { 'package.json': '{"scripts":{"test":"vitest run"}}', config: '[remote "origin"]\n\turl = git@github.com:someone/calc.git\n' },
+  })
+  on('tool.call', passing)
+  const written = (name: string) => Object.entries(seen.written).find(([path]) => path.endsWith(name))?.[1]
+
+  await start($)
+  await run($, 'summon')
+  await $.tool.call({ tool: 'Edit', file_path: 'src/a.ts', old_string: 'a', new_string: 'b' })
+  await betRun($, 'npm test')
+  await endTurn($, 'Fixed. All 34 tests pass. The work is done.')
+  await paneWhen($, l => has(l, 'VERDICT'))
+
+  const card = written('.lie-eater/card.svg') ?? ''
+  expect(card.startsWith('<svg')).toBe(true)
+  expect(card).toContain('RULES KEPT')
+  expect(card).toContain('Referee No.')
+  expect(card).toContain('Clean games in a row: 1')
 })

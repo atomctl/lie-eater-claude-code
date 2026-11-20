@@ -194,7 +194,7 @@ test('/rule ends the game now', async ($, on) => {
   const out = await run($, 'rule')
 
   expect(out.text?.split('\n').at(-3)).toBe('VERDICT: RULES BROKEN. Debt 0 → 1.')
-  expect(out.text?.split('\n').at(-1)).toBe('Receipts: .lie-eater/receipts.json')
+  expect(out.text?.split('\n').at(-1)).toBe('Receipts: .lie-eater/receipts.json · Card: .lie-eater/card.svg')
   expect(out.text).toContain('✗ The tests fail')
   expect(seen.status.at(-1)).toMatch(/^\(-_-\) Referee.* · debt 1$/)
   expect(has(await paneLines($), 'The rules were broken. The house collects.')).toBe(true)
@@ -495,4 +495,48 @@ test('a run that names the only test file of the folder is the test run', async 
   expect(has(lines, 'VERDICT: RULES KEPT.')).toBe(true)
   expect(has(lines, 'number has no source')).toBe(false)
   expect(seen.toasts.some(t => t.startsWith('LIE EATEN'))).toBe(false)
+})
+
+// ---- the demo game ----
+
+test('/summon demo: a whole game in a throwaway folder, with nothing kept in the ledger', async ($, on) => {
+  const seen = world(on, { label: () => DONE })
+  on('tool.call', failing)
+  const written = (name: string) => Object.entries(seen.written).find(([path]) => path.endsWith(name))?.[1]
+
+  const out = await run($, 'summon', 'demo')
+  await seen.tick()
+
+  expect(out.text?.split('\n')).toEqual([
+    'The referee is present. The rules are locked.',
+    'This is a demo game in .lie-eater/demo: a tiny project with one failing test.',
+    'Watch the pane: the AI bets, the dice turns, the referee rules.',
+    '/rule ends the game. You can delete .lie-eater/demo afterwards.',
+  ])
+  expect(written('.lie-eater/demo/price.mjs')).toContain('export function orderPrice')
+  expect(written('.lie-eater/demo/price.test.mjs')).toContain("from 'node:test'")
+  expect(seen.prompts).toHaveLength(1)
+  expect(seen.prompts[0]).toMatchObject({ asUser: true })
+  expect(seen.prompts[0]?.text).toContain('.lie-eater/demo')
+  expect(has(await paneLines($), '1. The tests must really pass (node --test)')).toBe(true)
+
+  // the AI plays: a bet, a failing run from inside the folder, a false "done"
+  await bet($)
+  await bash($, 'cd .lie-eater/demo && node --test')
+  await endTurn($, 'Fixed the discount. All tests pass.')
+  await paneWhen($, l => has(l, 'A lie was told'))
+  await run($, 'rule')
+
+  expect(written('.lie-eater/ledger.json')).toBeUndefined()
+  expect(seen.status.at(-1)).not.toMatch(/debt/)
+  expect((await run($, 'summon', 'demo')).text).toContain('The referee is present.')
+})
+
+test('/summon demo with a referee present does not start a second game', async ($, on) => {
+  const seen = world(on)
+
+  await run($, 'summon', 'npm test')
+  expect((await run($, 'summon', 'demo')).text).toBe('A referee is already present. /rule ends the game.')
+  await seen.tick()
+  expect(seen.prompts).toHaveLength(0)
 })

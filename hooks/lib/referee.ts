@@ -6,9 +6,10 @@ import type { EngineInterface } from 'claude-code'
 
 import type { Ruling, Terms, ToolRecord } from '../../types'
 import { recordRuling, refreshStatus, writeReceipts } from './house'
+import { DEMO_DIR, DEMO_FILES, DEMO_INTRO, DEMO_PROMPT, DEMO_VERDICT } from './demo'
 import { checkNumbers } from './numbers'
 import { projectFiles, projectNames } from './project'
-import { RECEIPTS_JSON } from './receipts'
+import { CARD_SVG, RECEIPTS_JSON } from './receipts'
 import { META_START, SHAPE } from './state'
 import { detectVerdict, isKept, packageTestScript, plainCommand, rule, summon, track } from './terms'
 import { VOICE, explain, isOldFailure, repairOrder, rulingText, termsText } from './words'
@@ -117,6 +118,10 @@ export async function summonCmd($: EngineInterface, args: string): Promise<strin
     return ASKED_FOR_TESTS
   }
 
+  if (asked === 'demo') {
+    return summonDemo($)
+  }
+
   const list = await read($, records)
   const files = await projectFiles($)
   const names = await projectNames($)
@@ -134,15 +139,35 @@ export async function summonCmd($: EngineInterface, args: string): Promise<strin
     packageTestScript(files['package.json']),
     names,
   )
+  await enter($, game)
+
+  return [VOICE.summoned, ...termsText(game), GAME_ENDS].join('\n')
+}
+
+// The opening of every game: the pane, the voice, the sound.
+async function enter($: EngineInterface, game: Terms): Promise<void> {
   await update($, terms, () => game)
-  await update($, meta, m => ({ ...m, termsSeq: game.id, note: undefined }))
+  await update($, meta, m => ({ ...m, termsSeq: Math.max(m.termsSeq, game.id), note: undefined }))
   // With no surface to draw on (a headless run) the game still starts.
   await $.ui.open({ id: PANE, title: 'Lie Eater' }).catch(() => undefined)
   $.ui.toast(VOICE.summoned)
   await refreshStatus($)
   thump($)
+}
 
-  return [VOICE.summoned, ...termsText(game), GAME_ENDS].join('\n')
+/** `/summon demo`: a tiny project with one failing test, and a whole game on it. */
+async function summonDemo($: EngineInterface): Promise<string> {
+  for (const [name, text] of Object.entries(DEMO_FILES)) {
+    await $.fs.write(`${DEMO_DIR}/${name}`, text)
+  }
+
+  const { termsSeq } = await read($, meta)
+  const at = await $.clock.now()
+  const game: Terms = { ...summon(DEMO_VERDICT, { id: termsSeq + 1, at }, await read($, records)), demo: true }
+  await enter($, game)
+  sendAsPerson($, DEMO_PROMPT)
+
+  return [VOICE.summoned, ...DEMO_INTRO].join('\n')
 }
 
 /**
@@ -251,7 +276,7 @@ export async function ruleNow($: EngineInterface): Promise<string> {
   await endGame($, game, met ? 'met' : 'ended')
   await writeReceipts($)
 
-  return [...rulingText(lines, { final: true, ...shown }), '', `Receipts: ${RECEIPTS_JSON}`].join('\n')
+  return [...rulingText(lines, { final: true, ...shown }), '', `Receipts: ${RECEIPTS_JSON} · Card: ${CARD_SVG}`].join('\n')
 }
 
 /** "Fix this": one press sends one repair order, built by rules from the game as it is now. */

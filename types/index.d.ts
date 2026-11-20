@@ -22,6 +22,7 @@ export type Terms = {
   verdict: string             // the verdict command, as the person locked it
   also?: string               // the test command inside the package.json script: the same run
   testFiles?: string[]        // the project's test files at the summon; naming all of them is the full run
+  demo?: true                 // the demo game: nothing of it goes into the ledger
   startRecord: number         // id of the newest record at the summon
   state: 'in play' | 'met' | 'ended'
   verdictRun?: { record: number; state: ToolRecord['state']; line: string; failed?: number }
