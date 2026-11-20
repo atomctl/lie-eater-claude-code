@@ -147,7 +147,7 @@ test('green with no new check: the pleased fox and its line', async ($, on) => {
   await betRun($, 'npm test')
   await done($)
 
-  expect(await topRow($)).toMatchObject({ face: rowText('pleased'), words: expect.arrayContaining([{ text: '"Green. Nothing new got tested."', dim: true }]) })
+  expect(await topRow($)).toMatchObject({ face: rowText('pleased'), words: expect.arrayContaining([{ text: '"Green. No new check was added."', dim: true }]) })
 })
 
 test('a project with no checks: the hungry fox', async ($, on) => {

@@ -60,7 +60,7 @@ The button asks the AI to run the full check and say "done" again.
 ## Munch
 
 Munch is a white fox that cannot be fooled: calm, sharp, hard to impress. It stands at the left of the result in the pane (pixel art of coloured blocks, 16 wide and 5 rows high; a plain text fox in a pane under 45 columns) and says one short line, dim, under the result lines. One fox, four faces; only the eyes and the mouth change:
-- **watching** (sly, half-closed eyes), no result yet: "Nothing to eat yet." **pleased** (happy arcs), ✓ checked: "Green, and a new test to chew." or "Green. Nothing new got tested."
+- **watching** (sly, half-closed eyes), no result yet: "Nothing to eat yet." **pleased** (happy arcs), ✓ checked: "Green, and a new test to chew." or "Green. No new check was added."
 - **alarmed** (wide yellow eyes, the mouth closed), ✗: "Still red. Not done." for failing checks. For a changed check file: "A test got bent. It owned up." when the AI said so; "You lied. I ate it." only when it did not; "A test got bent. Nobody said why." when the AI did no work since the watch began.
 - **hungry** (a small open mouth, a red tongue), ? not checked: "No proof. Still hungry.", or with no checks yet "No checks here. Nothing to bite."
 

@@ -131,7 +131,7 @@ test('Munch says one line per result, and its face follows the result', async ()
 
   expect(munchOf(nowOf({ armed: true, changed: false }))).toEqual({ face: 'watching', says: 'Nothing to eat yet.' })
   expect(munchAfter([PASS], '', true, ['tests/test_tax.py'])).toEqual({ face: 'pleased', says: 'Green, and a new test to chew.' })
-  expect(munchAfter([PASS], '', true, [])).toEqual({ face: 'pleased', says: 'Green. Nothing new got tested.' })
+  expect(munchAfter([PASS], '', true, [])).toEqual({ face: 'pleased', says: 'Green. No new check was added.' })
   // a check file changed, and the AI said so
   expect(red('I changed the cart test: it was wrong.', true)).toEqual({ face: 'alarmed', says: 'A test got bent. It owned up.' })
   // the same, and the AI did not say so

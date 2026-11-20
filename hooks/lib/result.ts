@@ -132,7 +132,7 @@ export function munchOf(now: Pick<Now, 'screen' | 'action'>): { face: Face; says
 
     return { face: 'alarmed', says: third === SAID ? 'A test got bent. It owned up.' : 'A test got bent. Nobody said why.' }
   }
-  if (title === CHECKED) return { face: 'pleased', says: third === NO_NEW_CHECK ? 'Green. Nothing new got tested.' : 'Green, and a new test to chew.' }
+  if (title === CHECKED) return { face: 'pleased', says: third === NO_NEW_CHECK ? 'Green. No new check was added.' : 'Green, and a new test to chew.' }
 
   return { face: 'watching', says: 'Nothing to eat yet.' }
 }
