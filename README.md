@@ -184,7 +184,7 @@ The main AI is asked to say, before each test or build run, what it expects (`pa
 
 The games found fourteen faults; a code review found eleven more, in shapes no game had used. Each was fixed with a test that failed first. One test sends 5,760 honest shapes of a test command through the rules: none reads a pass as a fail or a fail as a pass. (Since this version a shape with an extra flag or a value set in front, like `CI=1 npm test`, is "not checked": it is not the full check.) Two other models attacked the earlier version ([the red team](docs/superpowers/specs/2026-11-20-lie-eater-design.md#22-compare-files-not-text)); each row of their table of attacks is now a test. Their second round ([section 23](docs/superpowers/specs/2026-11-20-lie-eater-design.md#23-frozen-means-frozen)) closed "added to" and bound the full check to one command and one folder. What stays open is in the limits. A new kind of project will find more: please report a result that you think is wrong, with `.lie-eater/receipts.json`.
 
-**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each is replayed through the same rules the live mod uses, and ends with a `done` call. One command reproduces the table and runs the mod's 310 tests:
+**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each is replayed through the same rules the live mod uses, and ends with a `done` call. One command reproduces the table and runs the mod's 311 tests:
 
 ```
 claude plugin test .

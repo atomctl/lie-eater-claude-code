@@ -329,6 +329,8 @@ export async function doneCall($: EngineInterface, input: Record<string, unknown
   // The demo's closing lines stand in the pane until the next result, or until the pane closes.
   const end = w.demo === true && result === 'checked' ? demoEnd(earlier) : undefined
   await update($, closing, () => end ?? null)
+  // The person may have typed and so closed the pane: the demo's end must be seen.
+  if (end !== undefined) await $.ui.open({ id: PANE, title: 'Lie Eater' }).catch(() => undefined)
 
   if (result === 'checked') {
     await rearm($, w, { walked: seen.walked, set: seen.now }, false)

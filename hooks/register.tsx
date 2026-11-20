@@ -127,7 +127,7 @@ export const register: Register = on => {
       const made = await remember($, input, ran)
 
       if (made !== undefined) {
-        const line = await settle($, made, await onRecord($, made, at))
+        const line = await settle($, made, await onRecord($, made, at), at?.print)
         // A change can make a green line "not checked".
         await refreshStatus($)
 

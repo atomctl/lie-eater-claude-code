@@ -292,3 +292,21 @@ test('a chain that failed before the test run started does not lose the bet', as
   expect(has(await detailLines($), 'WON · npm test → 34 passed in 1s')).toBe(true)
   expect(has(await detailLines($), 'VOID')).toBe(false)
 })
+
+// Seen on a real screen (21 Nov): the AI repaired through the shell (`sed -i`), and its next bet was called void.
+test('a change made through the shell since the last run: the next bet is settled, not void', async ($, on) => {
+  const opts = project()
+  opts.files['app.js'] = 'v1'
+  opts.dirs.root.push('app.js')
+  world(on, opts)
+  on('tool.call', passing)
+
+  await start($)
+  await betRun($, 'npm test')
+  // no Edit, no Write: the file is changed by a shell command
+  await bash($, "sed -i '' 's/v1/v2 and more/' app.js")
+  opts.files['app.js'] = 'v2 and more'
+  const again = await betRun($, 'npm test')
+
+  expect(again.context?.at(-1)).toContain('bet #2 WON')
+})

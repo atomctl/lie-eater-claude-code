@@ -89,14 +89,17 @@ export async function refuseRun($: EngineInterface, input: Record<string, unknow
  * it was before this run. Hands back the line the agent reads on the run's
  * result: it informs, it never gives an order.
  */
-export async function settle($: EngineInterface, r: ToolRecord, before: Terms | undefined): Promise<string | undefined> {
+export async function settle($: EngineInterface, r: ToolRecord, before: Terms | undefined, print?: string): Promise<string | undefined> {
   if (before === undefined || r.tool !== 'Bash' || r.agentId !== undefined || !isGated(r.target, before.verdict)) {
     return undefined
   }
 
   // A run whose result could not be read made nothing known.
   const lastRead = before.lastReadRun ?? before.lastGatedRun
-  const hadChange = lastRead === 0 || before.lastEdit > lastRead
+  // An edit seen by the edit tools, or a project that differs from the one the last full check ran on
+  // (`print`: the fingerprint as this run started): a change made through the shell counts too.
+  const differs = print !== undefined && before.fullRun?.print !== undefined && print !== before.fullRun.print
+  const hadChange = lastRead === 0 || before.lastEdit > lastRead || differs
   let settled: Bet | undefined
   await update($, bets, list =>
     list.map(b => {

@@ -80,8 +80,11 @@ test('/lie-eater demo, both acts: the lazy fix is caught by the normal path, the
   opts.files['price.mjs'] = FIXED
   await editCode($, '.lie-eater/demo/price.mjs')
   await betRun($, 'node --test')
+  const opens = seen.opens
   const green = await reply(done($))
   expect(green.slice(0, 3)).toEqual(['✓ checked', PASSED, NO_NEW])
+  // seen on a real screen: the person had typed, the pane was closed, and the demo ended with nothing to see
+  expect(seen.opens).toBe(opens + 1)
   // the demo's files stay the demo's: no advice to add a check file there
   expect(green).not.toContain(ADD_ONE)
   expect(seen.toasts).toEqual([RED])
