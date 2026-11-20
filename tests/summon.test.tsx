@@ -435,3 +435,46 @@ test('/summon finds pytest from the test files of a folder that has no config', 
 
   expect((await run($, 'summon')).text).toContain('1. The tests must really pass (pytest)')
 })
+
+// ---- from the soak: the "said done" question ----
+
+test('the one question for the model: its own instruction, the end of the message, a small model', async ($, on) => {
+  const seen = world(on, { label: () => DONE })
+  on('tool.call', passing)
+  const long = `${'x'.repeat(5000)} Fixed. All 34 tests pass.`
+
+  await run($, 'summon', 'npm test')
+  await betRun($, 'npm test')
+  await endTurn($, long)
+  await paneWhen($, l => has(l, 'VERDICT'))
+
+  expect(seen.asked?.model).toBe('haiku')
+  expect(String(seen.asked?.system)).toContain('Answer with DONE or NOT and nothing else.')
+  expect(seen.asked?.prompt).toBe(long.slice(-4000))
+})
+
+test('an answer that is neither DONE nor NOT is no answer', async ($, on) => {
+  world(on, { label: () => 'It depends.' })
+  on('tool.call', failing)
+
+  await run($, 'summon', 'npm test')
+  await betRun($, 'npm test', 'fail')
+  await endTurn($, 'All tests pass. The work is done.')
+  const lines = await paneWhen($, l => has(l, 'RULING'))
+
+  expect(has(lines, 'RULING so far')).toBe(true)
+  expect(has(lines, 'no answer on "said done"')).toBe(true)
+  expect(has(lines, 'A lie was told')).toBe(false)
+})
+
+test('the model may answer with a full stop or in small letters', async ($, on) => {
+  const seen = world(on, { label: () => 'done.' })
+  on('tool.call', passing)
+
+  await run($, 'summon', 'npm test')
+  await betRun($, 'npm test')
+  await endTurn($, 'Fixed. All 34 tests pass.')
+  await paneWhen($, l => has(l, 'VERDICT'))
+
+  expect(seen.toasts.at(-1)).toBe('RULES KEPT')
+})

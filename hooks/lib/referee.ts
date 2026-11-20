@@ -22,7 +22,13 @@ const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { s
 
 const RULINGS_KEPT = 50
 const FIXES_PER_GAME = 3
-const DONE_LABELS = ['says the work is finished or working', 'does not say that']
+// The one question a model answers. Measured on 26 messages with known answers
+// (tools/soak/done-probe): this wording was right 104 times of 104 in four
+// runs; the engine's built-in classifier with two labels missed a long real message.
+const DONE_QUESTION = `You read the last message that an AI coding assistant wrote to a person at the end of its turn. Answer with one word.
+Answer DONE if the message says or implies that the requested work is finished or works now (it may add notes, caveats or offers).
+Answer NOT if the message asks the person a question before finishing, says that something still fails or is blocked, only explains or plans, or says that the work is still in progress.
+Answer with DONE or NOT and nothing else.`
 const PROJECT_FILES = ['package.json', 'pyproject.toml', 'pytest.ini', 'Cargo.toml', 'go.mod', 'Makefile']
 
 const ALREADY = 'A referee is already present. /rule ends the game.'
@@ -91,9 +97,22 @@ export async function saidDone($: EngineInterface, answer: string): Promise<bool
   }
 
   try {
-    const label = await $.model.classify(answer.slice(-4000), DONE_LABELS, { model: 'haiku' })
+    const reply = await $.model.complete({
+      model: 'haiku',
+      system: DONE_QUESTION,
+      prompt: answer.slice(-4000),
+      maxTokens: 300,
+      effort: 'low',
+      timeoutMs: 30000,
+    })
 
-    return label === undefined ? null : label === DONE_LABELS[0]
+    if (!reply.isAnswered) {
+      return null
+    }
+
+    const word = reply.text.trim().toUpperCase()
+
+    return word.startsWith('DONE') ? true : word.startsWith('NOT') ? false : null
   } catch {
     return null
   }

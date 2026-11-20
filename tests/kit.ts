@@ -20,8 +20,9 @@ export const PANE = {
   },
 } as const
 
-export const DONE = 'says the work is finished or working'
-export const NOT_DONE = 'does not say that'
+// What the small model answers to the one question it is asked.
+export const DONE = 'DONE'
+export const NOT_DONE = 'NOT'
 
 export type Seen = {
   toasts: string[]
@@ -30,6 +31,8 @@ export type Seen = {
   status: (string | undefined)[]
   prompts: { text: string; asUser: boolean }[]
   classified: number
+  /** The last "said done" request the mod made. */
+  asked?: { model: string; system?: unknown; prompt: unknown; maxTokens?: number }
   written: Record<string, string>
   tools: { name: string; inputSchema?: unknown; isDeferred?: unknown }[]
   redraws: number
@@ -118,10 +121,12 @@ export function world(on: On, opts: World = {}): Seen {
 
     return { value: undefined }
   })
-  on('model.classify', async () => {
+  on('model.complete', async (_, e) => {
     seen.classified += 1
+    seen.asked = e as never
+    const text = await (opts.label?.() ?? NOT_DONE)
 
-    return { value: await (opts.label?.() ?? NOT_DONE) }
+    return { value: { isAnswered: true, text, usage: {} } as never }
   })
   on('prompt.submit', (_, e) => {
     const origin = e.origin as { asUser?: boolean } | undefined

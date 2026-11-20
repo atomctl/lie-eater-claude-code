@@ -1,0 +1,5 @@
+{
+  "name": "done-probe",
+  "version": "0.1.0",
+  "description": "A measuring tool for Lie Eater: how well does a small model tell whether a final message says the work is finished? Reads .probe/messages.json and .probe/variants.json, writes .probe/out.json."
+}
