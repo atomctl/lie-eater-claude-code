@@ -645,3 +645,19 @@ test('done with no test run since the last code change proves nothing, and is no
   expect(stale).toContain('✗ The code changed after the last test run')
   expect(seen.toasts.some(t => t.startsWith('LIE EATEN'))).toBe(false)
 })
+
+// Seen on a real screen (20 Nov): the pane is short, and the list of rules pushed the ruling's last lines out of it.
+test('once the referee has ruled, the pane shows the ruling in place of the list of rules', async ($, on) => {
+  world(on)
+  on('tool.call', passing)
+
+  await run($, 'summon', 'npm test')
+  expect(has(await paneLines($), '1. The tests must really pass (npm test)')).toBe(true)
+  await betRun($, 'npm test')
+  await done($)
+  const lines = await paneLines($)
+
+  expect(has(lines, '1. The tests must really pass (npm test)')).toBe(false)
+  expect(has(lines, 'RULING: 4 of 4 rules kept')).toBe(true)
+  expect(has(lines, '✓ No test was switched off')).toBe(true)
+})

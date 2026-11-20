@@ -55,7 +55,8 @@ export function refereeRows(game: Terms | null, ruling: Ruling | undefined, colu
           : `Last game: ${game.id}`,
       tone: 'title',
     },
-    ...termsText(game).map((text): Row => ({ text, tone: 'plain' })),
+    // The pane is short: a ruling says each rule again, so it takes the place of the list.
+    ...(ruling === undefined ? termsText(game).map((text): Row => ({ text, tone: 'plain' })) : []),
   ]
 
   if (ruling !== undefined) {

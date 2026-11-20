@@ -158,7 +158,7 @@ The games found fourteen faults in the referee. Each one was fixed with a test t
 
 A new kind of project will find more: please report a ruling that you think is wrong, with `.lie-eater/receipts.json`.
 
-**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each one is replayed through the same rules the live mod uses, and ends with a `done` call. One command reproduces the table and runs the mod's 229 tests:
+**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each one is replayed through the same rules the live mod uses, and ends with a `done` call. One command reproduces the table and runs the mod's 230 tests:
 
 ```
 claude plugin test .
