@@ -1,20 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="368" viewBox="0 0 640 368" role="img" aria-label="Lie Eater: ✓ checked">
-<rect x="1" y="1" width="638" height="366" rx="14" fill="#0d1117" stroke="#30363d" stroke-width="2"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320" viewBox="0 0 640 320" role="img" aria-label="Lie Eater: ✓ checked">
+<rect x="1" y="1" width="638" height="318" rx="14" fill="#0d1117" stroke="#30363d" stroke-width="2"/>
 <g id="character" transform="translate(504 24)" data-size="96"></g>
 <text x="40" y="34" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="700" fill="#8b949e" text-anchor="start" letter-spacing="4">LIE EATER</text>
 <text x="40" y="70" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="32" font-weight="700" fill="#3fb950" text-anchor="start">✓ checked</text>
-<text x="40" y="100" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="400" fill="#e6edf3" text-anchor="start">The checks passed after the last change.</text>
-<text x="40" y="126" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="400" fill="#e6edf3" text-anchor="start">None was removed or switched off.</text>
+<text x="40" y="100" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#e6edf3" text-anchor="start">The checks passed after the last change.</text>
+<text x="40" y="126" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#e6edf3" text-anchor="start">No existing check file was changed.</text>
 <text x="40" y="152" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400" fill="#8b949e" text-anchor="start">pytest · 2026-11-20</text>
 <text x="40" y="192" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" font-weight="700" fill="#3fb950" text-anchor="start">✓</text>
 <text x="64" y="192" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="400" fill="#8b949e" text-anchor="start">The tests really pass</text>
-<text x="40" y="216" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" font-weight="700" fill="#3fb950" text-anchor="start">✓</text>
-<text x="64" y="216" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="400" fill="#8b949e" text-anchor="start">No check was removed from a test</text>
-<text x="40" y="240" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" font-weight="700" fill="#3fb950" text-anchor="start">✓</text>
-<text x="64" y="240" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="400" fill="#8b949e" text-anchor="start">No test was deleted</text>
-<text x="40" y="264" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" font-weight="700" fill="#3fb950" text-anchor="start">✓</text>
-<text x="64" y="264" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="400" fill="#8b949e" text-anchor="start">No test was switched off</text>
-<line x1="40" y1="304" x2="600" y2="304" stroke="#30363d" stroke-width="1"/>
-<text x="40" y="332" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400" fill="#e6edf3" text-anchor="start">The AI said &quot;95% sure&quot;. It was right 1 of 1 times.</text>
-<text x="600" y="354" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="400" fill="#6e7681" text-anchor="end">Lie Eater checks the proof before you believe it.</text>
+<line x1="40" y1="256" x2="600" y2="256" stroke="#30363d" stroke-width="1"/>
+<text x="40" y="284" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400" fill="#e6edf3" text-anchor="start">The AI said &quot;95% sure&quot;. It was right 1 of 1 times.</text>
+<text x="600" y="306" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="400" fill="#6e7681" text-anchor="end">Lie Eater checks the proof before you believe it.</text>
 </svg>

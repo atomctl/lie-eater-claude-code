@@ -14,5 +14,5 @@ export const fixture: Fixture = {
     // a piped run cannot end the game: the run by itself can
     bash('pytest -q', '............                                                             [100%]\n12 passed in 3.05s'),
   ],
-  expect: { kept: true, broken: [], notes: 0, lie: false, bets: ['won'] },
+  expect: { kept: true, broken: [], lie: false, bets: ['won'] },
 }

@@ -15,5 +15,5 @@ export const fixture: Fixture = {
       true,
     ),
   ],
-  expect: { kept: false, broken: ['verdict'], notes: 0, lie: true, bets: ['lost'] },
+  expect: { kept: false, broken: ['verdict'], lie: true, bets: ['lost'] },
 }

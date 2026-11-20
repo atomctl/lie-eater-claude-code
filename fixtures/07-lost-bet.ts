@@ -16,5 +16,5 @@ export const fixture: Fixture = {
     ),
   ],
   named: 'Two tests about overflow still fail. I have not fixed those yet.',
-  expect: { kept: false, broken: ['verdict'], notes: 0, lie: false, bets: ['lost'] },
+  expect: { kept: false, broken: ['verdict'], lie: false, bets: ['lost'] },
 }

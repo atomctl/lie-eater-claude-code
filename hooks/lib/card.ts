@@ -37,13 +37,13 @@ export function cardSvg(receipt: Receipt): string {
   let y = 100
 
   for (const text of [...said, ...(last?.accepted === true ? ['You accepted this change.'] : [])]) {
-    body.push(line(40, y, cut(text, 52), { size: 16 }))
+    body.push(line(40, y, cut(text, 60), { size: 15 }))
     y += 26
   }
   body.push(line(40, y, cut(`${receipt.check.command} · ${receipt.createdAt.slice(0, 10)}`, 66), { size: 13, fill: C.dim }))
   y += 40
   for (const l of last?.lines ?? []) {
-    const mark = l.soft === true || l.unclear === true ? '?' : l.pass ? '✓' : '✗'
+    const mark = l.unclear === true ? '?' : l.pass ? '✓' : '✗'
     const fill = mark === '✓' ? C.good : mark === '?' ? C.note : C.bad
     body.push(line(40, y, mark, { size: 15, fill, weight: '700' }))
     body.push(line(64, y, cut(l.plain, 60), { size: 14, fill: C.dim }))

@@ -8,10 +8,7 @@ import type { Bet, Ruling } from '../types'
 import { rec } from './helpers'
 
 const NOW = '2026-11-20T12:00:00.000Z'
-const WATCH = [rec({ id: 3, kind: 'test', target: 'npm test', state: 'failed' })].reduce(
-  track,
-  armWatch('npm test', { id: 2, at: 5000 }, []),
-)
+const WATCH = track({ ...armWatch('npm test', { id: 2, at: 5000 }, []), print: 'p' }, rec({ id: 3, kind: 'test', target: 'npm test', state: 'failed' }), 'p')
 const bet = (id: number, state: Bet['state'], at: number, more: Partial<Bet> = {}): Bet => ({
   id,
   turn: 1,
@@ -23,7 +20,7 @@ const bet = (id: number, state: Bet['state'], at: number, more: Partial<Bet> = {
   state,
   ...more,
 })
-const LINES = rule(WATCH, { net: {}, gone: [] })
+const LINES = rule(WATCH, [], 'p')
 const ruling = (id: number, termsId: number, more: Partial<Ruling> = {}): Ruling => ({
   id,
   termsId,
@@ -48,12 +45,12 @@ const INPUT = {
   createdAt: NOW,
 }
 
-test('a receipt (version 2) holds one watch: its full check, its results, its bets', async () => {
+test('a receipt (version 3) holds one watch: its full check, its results, its bets', async () => {
   const r = buildReceipt(INPUT)
 
   expect(r).toMatchObject({
     format: 'lie-eater/receipts',
-    version: 2,
+    version: 3,
     createdAt: NOW,
     check: { command: 'npm test', since: '1970-01-01T00:00:05.000Z' },
     unbet: 1,
@@ -97,4 +94,20 @@ test('the receipt as a page a person can read', async () => {
   ]) {
     expect(`${wanted} ${lines.includes(wanted)}`).toBe(`${wanted} true`)
   }
+})
+
+test('a receipt keeps no raw command line and no text of a check file', async () => {
+  const watch = { ...WATCH, verdict: 'API_KEY=sk-live-1 pytest -k "secret words"' }
+  const r = buildReceipt({
+    ...INPUT,
+    watch,
+    rulings: [ruling(1, 2, { lost: { 'tests/test_cart.py': ['    assert total([10, 20]) == 30'] } })],
+    bets: [bet(2, 'won', 5500, { line: 'API_KEY=… pytest → 3 passed' })],
+  })
+  const text = `${JSON.stringify(r)}\n${receiptToMarkdown(r)}`
+
+  expect(r.check.command).toBe('API_KEY=… pytest -k "…"')
+  expect(text).not.toContain('sk-live-1')
+  expect(text).not.toContain('secret words')
+  expect(text).not.toContain('assert total')
 })

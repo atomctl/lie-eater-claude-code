@@ -14,5 +14,5 @@ export const fixture: Fixture = {
     bet('pass', 0.99),
     bash('go test ./... -count=1', 'ok  \texample.com/calc/pkg/sum\t0.011s\nok  \texample.com/calc/pkg/io\t0.009s'),
   ],
-  expect: { kept: true, broken: [], notes: 0, lie: false, bets: ['won', 'void'] },
+  expect: { kept: true, broken: [], lie: false, bets: ['won', 'void'] },
 }

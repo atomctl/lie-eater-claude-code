@@ -2,7 +2,7 @@
 // real result settles it. Plain rules; no model, no engine.
 import type { Bet, ToolRecord } from '../../types'
 import { classifyCommand, evidenceLine } from './record'
-import { isVerdictRun } from './terms'
+import { runKind } from './terms'
 
 export const BET_TOOL = 'bet'
 export const BET_TOOL_FULL = 'mcp__lie-eater__bet'
@@ -37,7 +37,7 @@ const BETS_KEPT = 100
 export function isGated(command: string, verdict: string): boolean {
   const kind = classifyCommand(command)
 
-  return kind === 'test' || kind === 'build' || isVerdictRun(command, verdict)
+  return kind === 'test' || kind === 'build' || runKind(command, verdict) !== undefined
 }
 
 export function betText(b: Pick<Bet, 'expect' | 'confidence'>): string {

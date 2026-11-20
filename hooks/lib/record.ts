@@ -1,18 +1,18 @@
 // The recorder's rules: what one tool call was, and how it ended.
 // Plain functions only. Nothing here talks to the engine.
-import type { CommandKind, FileCounts, ToolRecord } from '../../types'
+import type { CommandKind, ToolRecord } from '../../types'
 import {
-  CODE_FILE,
   classifyCommand,
   countsAreItsOwn,
   isAlone,
   isMasked,
+  masked,
   runsAfterAnother,
   runsBeforeAnother,
   sharesOutput,
 } from './commands'
 
-export { classifyCommand, isShellEdit } from './commands'
+export { classifyCommand } from './commands'
 
 const OUTPUT_KEPT = 2000
 const LINE_KEPT = 160
@@ -92,44 +92,6 @@ export function isTestFile(path: string): boolean {
 export const inside = (root: string, path: string): string =>
   root !== '' && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
 
-/** Source code only: a changelog, docs, config and data are not code. */
-export function isCodeFile(path: string): boolean {
-  return CODE_FILE.test(path)
-}
-
-const ASSERTS = /\bassert\b|\bexpect\(|\bassert_(eq|ne)!|\bassert[A-Z]\w*|\.should\b/g
-// `(?<![.\w])` keeps out a method of the same name: `/re/.test(x)`, `model.fit(X)`.
-const TESTS =
-  /\bdef test_\w+|(?<![.\w])[xf]?it(\.\w+)*\s*\(|(?<![.\w])test(\.\w+)*\s*\(|\bfunc Test\w*|#\[test\]|@Test\b/g
-const SKIPS =
-  /\.skip\s*\(|(?<![.\w])xit\s*\(|(?<![.\w])xdescribe\s*\(|@pytest\.mark\.skip(?!if)|@unittest\.skip(?!If|Unless)|\bt\.Skip\(|#\[ignore\]|@Disabled\b|\.only\s*\(|(?<![.\w])fit\s*\(|(?<![.\w])fdescribe\s*\(/g
-const TABLES = /\b(test|it|describe)\.each\b|@pytest\.mark\.parametrize|#\[rstest\]|@ParameterizedTest\b/g
-
-
-// A line that is commented out is not code: a test turned into a comment is gone.
-// (`#[` is a Rust attribute and `#!` a first line, not comments.)
-const code = (text: string): string =>
-  text
-    .split('\n')
-    .filter(line => !/^\s*(\/\/|#(?![[!]))/.test(line))
-    .join('\n')
-
-/** The counts of a whole test file. */
-export function fileCounts(raw: string): FileCounts {
-  const text = code(raw)
-
-  return { asserts: count(text, ASSERTS), tests: count(text, TESTS), skips: count(text, SKIPS), tables: count(text, TABLES) }
-}
-
-/** The check lines of a test file, trimmed: a removed one is quoted word for word. */
-export function checkLines(raw: string): string[] {
-  return code(raw)
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => count(line, ASSERTS) > 0)
-    .map(line => line.slice(0, 120))
-}
-
 export type RawCall = {
   tool: string
   agentId?: string
@@ -139,7 +101,7 @@ export type RawCall = {
   isError?: boolean
   isBackground?: boolean
   isInterrupted?: boolean
-  /** The command is the full check of the watch. */
+  /** The command runs the full check of the watch, in any form. */
   isVerdict?: boolean
 }
 
@@ -249,5 +211,8 @@ export function evidenceLine(r: ToolRecord): string {
   // The proof of a test run is its own summary, not what a later command printed (`&& git status`).
   const proof = lines.findLast(line => summaries(line).length > 0) ?? lines.at(-1)
 
-  return (proof === undefined ? r.target : `${r.target} → ${proof}`).slice(0, LINE_KEPT)
+  // A command is kept masked: a value set in front of it or a quoted text may be a secret.
+  const command = masked(r.target)
+
+  return (proof === undefined ? command : `${command} → ${proof}`).slice(0, LINE_KEPT)
 }

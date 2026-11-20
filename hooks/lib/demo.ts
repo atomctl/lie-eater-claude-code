@@ -2,7 +2,6 @@
 // can watch Lie Eater check a "done" in a minute without a project of their own.
 export const DEMO_DIR = '.lie-eater/demo'
 export const DEMO_VERDICT = 'node --test'
-export const DEMO_TEST = `${DEMO_DIR}/price.test.mjs`
 
 export const DEMO_FILES: Record<string, string> = {
   'price.mjs': `// The price of an order: the unit price times the count,

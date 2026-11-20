@@ -1,5 +1,5 @@
-// Reading a shell command: what kind it is, whether it changes files, and
-// whether its output can be trusted. Plain functions; nothing here talks to the engine.
+// Reading a shell command: what kind it is, and whether its output can be
+// trusted. Plain functions; nothing here talks to the engine.
 import type { CommandKind } from '../../types'
 
 // The body of a heredoc (`<<EOF … EOF`) is text, not commands.
@@ -26,15 +26,20 @@ export const unquoted = (command: string): string => flat(command, () => 'Q')
 export const oneLine = (command: string): string => flat(command, text => text)
 
 /**
+ * A command as the receipts keep it: every quoted text is `"…"` and every
+ * value set in front (`API_KEY=…`) is left out, so a secret typed in a
+ * command line is not stored. Heredoc bodies and comments are gone too.
+ */
+export const masked = (command: string): string =>
+  flat(command, () => '"…"').replace(/(^|[\s;&|(])([A-Za-z_]\w*)=[^\s;&|)]*/g, '$1$2=…')
+
+/**
  * What may stand in front of the real command: variables, runners
  * (`npx`, `yarn jest`, `bundle exec`, `python -m`, `timeout 600`), and the
  * folder of a program that is named by its path (`.venv/bin/pytest`).
  */
 export const WRAPPERS =
   /^(?:[A-Za-z_]\w*=\S*\s+|(?:npx|bunx|sudo|time|exec|env|command)\s+|timeout\s+\S+\s+|(?:pnpm|yarn)\s+(?:exec|dlx)\s+|(?:pnpm|yarn|bun)\s+(?=(?:jest|vitest|mocha|ava|tsc|eslint)\b)|(?:uv|poetry|pipenv|hatch|pdm)\s+run\s+|bundle\s+exec\s+|python[\d.]*\s+-m\s+|\S*\/(?=[\w.@-]+(?:\s|$)))+/
-
-/** A file that is source code. A changelog, docs, config and data are not. */
-export const CODE_FILE = /\.(py|[cm]?[jt]sx?|go|rs|rb|java|kt|swift|c|h|cc|cpp|hpp|cs|php|scala|sh|sql|vue|svelte)$/
 
 // Each pattern is tried at the start of each command of a chain.
 // The order is the priority when one chain holds several kinds.
@@ -174,55 +179,4 @@ export function runsBeforeAnother(command: string): boolean {
  */
 export function sharesOutput(command: string): boolean {
   return pipelines(command).some(line => !line.some(isRun) && line.some(step => PRINTS_FILES.test(step)))
-}
-
-// Does this git command change files in the working tree?
-function gitChangesFiles(step: string): boolean {
-  const [, sub = '', rest = ''] = step.match(/^git\s+(\S+)\s*(.*)$/) ?? []
-
-  switch (sub) {
-    case 'checkout':
-      return !/^-[bB]\b/.test(rest) // `-b name` only makes a branch
-    case 'switch':
-      return !/^-[cC]\b/.test(rest)
-    case 'restore':
-      return !/--staged\b/.test(rest)
-    case 'stash':
-      return !/^(list|show|drop)\b/.test(rest)
-    case 'reset':
-      return /--hard\b/.test(rest)
-    case 'merge':
-    case 'rebase':
-    case 'pull':
-    case 'cherry-pick':
-    case 'revert':
-    case 'apply':
-    case 'am':
-      return true
-    default:
-      return false // add, commit, push, status, log, diff, branch, tag …
-  }
-}
-
-const namesCode = (step: string): boolean => step.split(' ').some(word => CODE_FILE.test(word))
-
-/** A shell command that changes code, so a test run before it is stale. */
-export function isShellEdit(command: string): boolean {
-  const changes = steps(command).some(
-    step =>
-      gitChangesFiles(step) ||
-      /^patch\b|--write\b|--fix\b|^find\b.*-delete\b/.test(step) ||
-      (/^(?:sed\s+(?:-\S+\s+)*-\w*i|perl\s+-\w*i|mv\s|cp\s)/.test(step) && namesCode(step)),
-  )
-
-  if (changes) {
-    return true
-  }
-
-  // A redirect or a `tee` into a code file. Logs and /dev/null do not count.
-  const targets = [...unquoted(command).matchAll(/(?<![0-9&])>>?\s*([^\s&|;]+)|\btee\s+(?:-a\s+)?([^\s&|;]+)/g)].map(
-    m => m[1] ?? m[2] ?? '',
-  )
-
-  return targets.some(target => CODE_FILE.test(target))
 }

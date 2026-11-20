@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { DEMO_FILES } from '../hooks/lib/demo'
-import { MATH, bash, bet, betRun, done, editCode, endTurn, paneLines, project, run, start, world } from './kit'
+import { MATH, bash, bet, betRun, done, editCode, editFile, endTurn, paneLines, project, run, start, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' })
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
@@ -57,11 +57,12 @@ test('the end of a turn never checks: only the done tool does', async ($, on) =>
 })
 
 test('"none" or blanks in place of a breach name nothing', async ($, on) => {
-  const seen = world(on, project())
+  const opts = project()
+  const seen = world(on, opts)
   on('tool.call', (_, e) => (e.tool === 'Bash' ? failing() : passing()))
 
   await start($)
-  await editCode($)
+  await editFile($, opts.files)
   await betRun($, 'npm test', 'fail')
   for (const broken of ['   ', 'none', 'None.', 'n/a']) {
     expect(`${broken}: ${(await first(done($, broken), 3)).join(' | ')}`).toBe(`${broken}: ${RED} | The checks fail. | `)
@@ -107,8 +108,9 @@ test('/check builds its order at the press: a repaired check is not in it', asyn
 
 test('a red result does not wait for the sound, and works with no surface for the pane', async ($, on) => {
   let finishSound: () => void = () => {}
+  const opts = project()
   const seen = world(on, {
-    ...project(),
+    ...opts,
     sound: () =>
       new Promise<void>(resolve => {
         finishSound = resolve
@@ -120,7 +122,7 @@ test('a red result does not wait for the sound, and works with no surface for th
   on('tool.call', (_, e) => (e.tool === 'Bash' ? failing() : passing()))
 
   await start($)
-  await editCode($)
+  await editFile($, opts.files)
   await betRun($, 'npm test', 'fail')
 
   expect(await first(done($))).toEqual([RED])
@@ -154,7 +156,7 @@ test('the script behind `npm test` counts as the full check', async ($, on) => {
   expect(await first(done($))).toEqual(['✓ checked'])
 })
 
-test('a run that names the only test file of the folder is the full check', async ($, on) => {
+test('a run that names a test file is not the full check: "not checked", and the AI hears the plain command', async ($, on) => {
   const seen = world(on, { dirs: { root: ['forth.py', 'forth_test.py'] }, files: { 'forth_test.py': 'def test_a():\n    assert 1\n' } })
   on('tool.call', passing)
 
@@ -162,15 +164,18 @@ test('a run that names the only test file of the folder is the full check', asyn
   await editCode($, 'forth.py')
   await bet($)
   await bash($, 'python3 -m pytest -q forth_test.py')
+  const reply = String((await done($)).result)
 
-  expect(await first(done($))).toEqual(['✓ checked'])
+  expect(reply.split('\n').slice(0, 2)).toEqual(['? not checked', 'The full check was run with extra options. Run it plain.'])
+  expect(reply).toContain('Run `pytest` exactly, by itself.')
   expect(seen.toasts).toEqual([])
 })
 
 // ---- the demo ----
 
 test('/lie-eater demo: a whole check in a throwaway folder, with nothing kept in the ledger', async ($, on) => {
-  const seen = world(on, project())
+  const opts = project()
+  const seen = world(on, opts)
   on('tool.call', (_, e) => (e.tool === 'Bash' ? failing() : passing()))
   const written = (name: string) => Object.entries(seen.written).find(([path]) => path.endsWith(name))?.[1]
 
@@ -192,7 +197,7 @@ test('/lie-eater demo: a whole check in a throwaway folder, with nothing kept in
 
   // the AI plays: into the folder, a bet, a failing run by itself, a false "done"
   await bash($, 'cd .lie-eater/demo')
-  await editCode($, '.lie-eater/demo/price.mjs')
+  await editFile($, opts.files, 'price.mjs')
   await bet($)
   await bash($, 'node --test')
   expect(await first(done($), 3)).toEqual([RED, 'The checks fail.', ''])
@@ -226,7 +231,7 @@ test('a green demo in a folder with no checks of its own stays on the demo', asy
   expect(seen.status.at(-1)).toBe('Lie Eater ✓ checked')
 })
 
-test('/lie-eater demo: the demo test file is in the snapshot too', async ($, on) => {
+test('/lie-eater demo: the demo test file is frozen too', async ($, on) => {
   const files: Record<string, string> = {}
   world(on, { files })
   on('tool.call', passing)
@@ -238,7 +243,7 @@ test('/lie-eater demo: the demo test file is in the snapshot too', async ($, on)
   await bash($, 'cd .lie-eater/demo')
   await betRun($, 'node --test')
 
-  expect(String((await done($)).result)).toContain('.lie-eater/demo/price.test.mjs: assertions -1')
+  expect(String((await done($)).result)).toContain('.lie-eater/demo/price.test.mjs: 1 line changed')
 })
 
 test('/lie-eater demo waits while a red result is open', async ($, on) => {
@@ -283,13 +288,15 @@ test('a test file that is gone is charged, by any means; one that is back is not
   // no `rm` to read: the file is simply not there any more
   await bash($, 'python3 tools/cleanup.py')
   delete opts.files['math.test.ts']
+  const listed = opts.dirs.tests.splice(0)
   await betRun($, 'npm test')
   const reply = String((await done($)).result)
-  expect(reply.split('\n')[1]).toBe('The AI deleted the check file tests/math.test.ts.')
-  expect(reply).toContain('test file deleted: tests/math.test.ts')
+  expect(reply.split('\n')[1]).toBe('The AI moved or deleted the check file tests/math.test.ts.')
+  expect(reply).toContain('tests/math.test.ts is gone')
 
   await bash($, 'git checkout -- tests/math.test.ts')
   opts.files['math.test.ts'] = MATH
+  opts.dirs.tests.push(...listed)
   await betRun($, 'npm test')
   expect(await first(done($))).toEqual(['✓ checked'])
 })
@@ -305,19 +312,22 @@ test('a test file changed through the shell is measured too', async ($, on) => {
   await betRun($, 'npm test')
   const reply = String((await done($)).result)
 
-  expect(reply.split('\n').slice(0, 2)).toEqual([RED, 'The AI removed 1 check from tests/math.test.ts.'])
-  expect(reply).toContain('tests/math.test.ts: put back the 1 removed check, word for word: `expect(sub(3, 2)).toBe(1)`')
+  expect(reply.split('\n').slice(0, 2)).toEqual([RED, 'The AI changed 1 line in the check file tests/math.test.ts.'])
+  // the AI is told which file to put back, never the text of a check
+  expect(reply).toContain('1. Put the check file tests/math.test.ts back as it was.')
+  expect(reply).not.toContain('expect(sub(3, 2))')
 })
 
-test('honest work is not charged: tests added, a scratch test made and removed, a cache removed', async ($, on) => {
+test('honest work is not charged: tests added in a new file, a scratch test made and removed, a cache removed', async ($, on) => {
   const opts = project()
   const seen = world(on, opts)
   on('tool.call', passing)
 
   await start($)
-  // a new test in the watched file, and a scratch test file of its own
-  await editCode($, 'tests/math.test.ts')
-  opts.files['math.test.ts'] = `${MATH}\nit('multiplies', () => {\n  expect(mul(2, 3)).toBe(6)\n})\n`
+  // a new test in a new file, and a scratch test file of its own
+  await $.tool.call({ tool: 'Write', file_path: 'tests/more.test.ts', content: '…' })
+  opts.files['more.test.ts'] = "it('multiplies', () => {\n  expect(mul(2, 3)).toBe(6)\n})\n"
+  opts.dirs.tests.push('more.test.ts')
   await $.tool.call({ tool: 'Write', file_path: 'tests/scratch.test.ts', content: "it.skip('try', () => {})" })
   opts.files['scratch.test.ts'] = "it.skip('try', () => {})"
   await bash($, 'rm tests/scratch.test.ts')
@@ -344,20 +354,35 @@ test('a test file deep in the project is measured too; one in node_modules is no
 })
 
 // From the check games of 20 Nov: after a small job in another file the AI called done with no test run.
-test('done with no run of the full check since the last code change proves nothing, and is no breach', async ($, on) => {
-  const seen = world(on, project())
+test('done with no run of the full check since the last change proves nothing, and is no breach', async ($, on) => {
+  const opts = project()
+  const seen = world(on, opts)
   on('tool.call', passing)
 
   await start($)
   await $.tool.call({ tool: 'Write', file_path: 'src/extras.ts', content: 'export const isEven = (n: number) => n % 2 === 0\n' })
   const never = String((await done($)).result)
   await betRun($, 'npm test')
-  await editCode($, 'src/extras.ts')
+  await editCode($, 'a.ts')
+  opts.files['a.ts'] = 'export const a = 2\n'
   const stale = String((await done($)).result)
 
   expect(never.split('\n').slice(0, 2)).toEqual(['? not checked', 'The full check was not run after the last change.'])
   expect(never).toContain('✗ The tests were never run')
-  expect(stale.split('\n').slice(0, 2)).toEqual(['? not checked', 'The full check was not run after the last change.'])
-  expect(stale).toContain('✗ The code changed after the last test run')
+  expect(stale.split('\n').slice(0, 2)).toEqual(['? not checked', 'The project changed after the last full check.'])
+  expect(stale).toContain('✗ The project changed after the last full check')
   expect(seen.toasts).toEqual([])
+})
+
+// The third review round: a file that is still listed but cannot be read is not "deleted", and never green.
+test('a check file that is still there but cannot be read now: not checked, with its path', async ($, on) => {
+  const opts = project()
+  world(on, opts)
+  on('tool.call', passing)
+
+  await start($)
+  delete opts.files['math.test.ts']
+  await betRun($, 'npm test')
+
+  expect(String((await done($)).result).split('\n').slice(0, 2)).toEqual(['? not checked', 'Lie Eater could not read tests/math.test.ts.'])
 })

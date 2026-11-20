@@ -1,6 +1,8 @@
-// What the mod reads from the person's project to find the test command.
-// It reads; it changes nothing.
+// What the mod reads from the person's project: the files that name a test
+// command, and the walk over its folders. It reads; it changes nothing.
 import type { EngineInterface } from 'claude-code'
+
+import { hash, isFrozen } from './frozen'
 
 const PROJECT_FILES = ['package.json', 'pyproject.toml', 'pytest.ini', 'Cargo.toml', 'go.mod', 'Makefile']
 
@@ -28,35 +30,55 @@ export async function projectFiles($: EngineInterface): Promise<Record<string, s
   return Object.fromEntries(PROJECT_FILES.map((name, i) => [name, texts[i]]))
 }
 
-// Folders that hold no tests of the project. A folder whose name starts with a dot is left out too.
+// Folders that hold no tests of the project. A folder whose name starts with a dot is left out too
+// (`.git`, `.lie-eater`, `.venv`).
 const NOT_THE_PROJECT = new Set(['node_modules', 'venv', 'env', 'dist', 'build', 'target', 'vendor', '__pycache__'])
-// shortcut: a project with more folders or files than this is not walked to its end, so a test file
-// behind the limit is not in the watch's snapshot; raise the limits when a real project hits them.
+// A project with more folders or files than this, or a folder that cannot be listed, is not read
+// to its end: no fingerprint, and no result better than "not checked".
 const FOLDERS_WALKED = 400
 const NAMES_KEPT = 5000
 
+/** The project's files by their paths inside it, and its fingerprint; `print` is absent when the walk is not whole. */
+export type Walked = { names: string[]; print?: string }
+
 /**
- * The names of the project's files, by their paths inside the project, at any
- * depth: a test file deeper down (`src/__tests__/a.test.ts`) is measured too.
- * `$.fs.list` reads one folder, so the folders are walked one by one.
+ * Walks the project (or the folder `from` inside it) at any depth, one folder
+ * at a time: `$.fs.list` reads one folder. The fingerprint is a hash of each
+ * file's path, size and modification time, from the listing; a frozen check
+ * file is read, and stands in it by the hash of its text.
  */
-export async function projectNames($: EngineInterface): Promise<string[]> {
+export async function walk($: EngineInterface, from = ''): Promise<Walked> {
   const root = await inProject($)
   const names: string[] = []
-  const folders = ['']
+  const stamps: string[] = []
+  const folders = [from]
+  let isWhole = true
+  let i = 0
 
-  for (let i = 0; i < folders.length && i < FOLDERS_WALKED && names.length < NAMES_KEPT; i += 1) {
+  for (; i < folders.length && i < FOLDERS_WALKED && names.length < NAMES_KEPT; i += 1) {
     const folder = folders[i] ?? ''
     const at = folder === '' ? root : root === '' ? folder : `${root}/${folder}`
-    const entries = await (at === '' ? $.fs.list() : $.fs.list(at)).catch(() => [])
+    const entries = await (at === '' ? $.fs.list() : $.fs.list(at)).catch(() => {
+      isWhole = false
+
+      return []
+    })
 
     for (const entry of entries) {
       const name = folder === '' ? entry.name : `${folder}/${entry.name}`
 
-      if (entry.kind !== 'dir') names.push(name)
-      else if (!entry.name.startsWith('.') && !NOT_THE_PROJECT.has(entry.name)) folders.push(name)
+      if (entry.kind !== 'dir') {
+        names.push(name)
+        // A check file by its text: put back after a run with its old size and time, it would look untouched.
+        const text = isFrozen(name) ? await $.fs.read(`${at === '' ? '' : `${at}/`}${entry.name}`).catch(() => undefined) : undefined
+        stamps.push(text === undefined ? `${name}\t${entry.size}\t${entry.mtimeMs}` : `${name}\t${hash(text)}`)
+      } else if (!entry.name.startsWith('.') && !NOT_THE_PROJECT.has(entry.name)) {
+        folders.push(name)
+      }
     }
   }
 
-  return names
+  isWhole &&= i >= folders.length && names.length < NAMES_KEPT
+
+  return { names, ...(isWhole ? { print: hash(stamps.sort().join('\n')) } : {}) }
 }

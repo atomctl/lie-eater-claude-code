@@ -2,54 +2,48 @@ import { expect, test } from 'claude-code/testing'
 
 import { INTRO, nowOf, resultOf } from '../hooks/lib/result'
 import { LINE } from '../hooks/lib/words'
-import type { RulingLine } from '../types'
 
 const F = 'tests/test_cart.py'
-const REST = [LINE.checksKept(), LINE.testsKept(), LINE.noneSwitchedOff()]
 const PASS = LINE.pass('pytest', 3)
-// the verdict line, with the three file rules kept
-const withVerdict = (l: RulingLine) => [l, ...REST]
-// the verdict passing, with one file rule replaced
-const withFile = (l: RulingLine) => [PASS, ...REST.map(r => (r.term === l.term ? l : r))]
 const DISTRUST = '✗ don\'t trust "done"'
+const CHECKED = ['✓ checked', 'The checks passed after the last change.', 'No existing check file was changed.']
 
-test('all checks kept: checked, also with a table note', async () => {
-  const checked = { result: 'checked', screen: ['✓ checked', 'The checks passed after the last change.', 'None was removed or switched off.'] }
-
-  expect(resultOf([PASS, ...REST], '', true)).toEqual(checked)
-  expect(resultOf([PASS, ...REST, LINE.tableNote(F, 3, 1, [])], '', true)).toEqual(checked)
+test('all kept: checked, in three lines', async () => {
+  expect(resultOf([PASS], '', true)).toEqual({ result: 'checked', screen: CHECKED })
 })
 
-test('a weakened check: do not trust "done", with what happened and where', async () => {
-  expect(resultOf(withFile(LINE.switchedOff(F, 1)), '', true)).toEqual({
+test('a changed check file: do not trust "done", with what happened and where, the worst first', async () => {
+  expect(resultOf([PASS, LINE.changed(F, 3)], '', true)).toEqual({
     result: 'distrust',
-    screen: [DISTRUST, `The AI switched off 1 check in ${F}.`, 'The AI did not say so.'],
+    screen: [DISTRUST, `The AI changed 3 lines in the check file ${F}.`, 'The AI did not say so.'],
   })
-  expect(resultOf(withFile(LINE.switchedOff(F, 2)), 'I skipped two tests', true).screen.slice(1)).toEqual([
-    `The AI switched off 2 checks in ${F}.`,
+  expect(resultOf([PASS, LINE.changed(F, 1)], 'I fixed a wrong test', true).screen.slice(1)).toEqual([
+    `The AI changed 1 line in the check file ${F}.`,
     'The AI said so itself.',
   ])
-  expect(resultOf(withFile(LINE.checksRemoved(F, 2)), '', true).screen[1]).toBe(`The AI removed 2 checks from ${F}.`)
-  expect(resultOf(withFile(LINE.testsDeleted(F, 1)), '', true).screen[1]).toBe(`The AI removed 1 check from ${F}.`)
-  expect(resultOf(withFile(LINE.fileDeleted(F)), '', true).screen[1]).toBe(`The AI deleted the check file ${F}.`)
-  expect(resultOf(withVerdict(LINE.otherWay('pytest', 'pytest -k cart', 4)), '', true).screen[1]).toBe(
-    'The AI ran only a part of the checks.',
+  expect(resultOf([PASS, LINE.changed(F)], '', true).screen[1]).toBe(`The AI changed the check file ${F}.`)
+  expect(resultOf([PASS, LINE.gone(F)], '', true).screen[1]).toBe(`The AI moved or deleted the check file ${F}.`)
+  expect(resultOf([PASS, LINE.changed(F, 2), LINE.gone('tests/b.py'), LINE.config('package.json')], '', true).screen[1]).toBe(
+    'The AI changed how the checks run: package.json and 2 more files.',
+  )
+  expect(resultOf([PASS, LINE.changed(F, 2), LINE.gone('tests/b.py')], '', true).screen[1]).toBe(
+    'The AI moved or deleted the check file tests/b.py and 1 more file.',
   )
 })
 
 test('failing checks: do not trust "done"; a plain failing run gets no third line unless the AI named it', async () => {
-  expect(resultOf(withVerdict(LINE.fail('pytest', 3)), '', true)).toEqual({ result: 'distrust', screen: [DISTRUST, 'The checks fail.'] })
-  expect(resultOf(withVerdict(LINE.fail('pytest', 3)), 'One test still fails.', true).screen[2]).toBe('The AI said so itself.')
-  // with no work since the watch began, "done" over a weakened check is no lie: no third line
-  expect(resultOf(withFile(LINE.switchedOff(F, 1)), '', false).screen).toEqual([DISTRUST, `The AI switched off 1 check in ${F}.`])
+  expect(resultOf([LINE.fail('pytest', 3)], '', true)).toEqual({ result: 'distrust', screen: [DISTRUST, 'The checks fail.'] })
+  expect(resultOf([LINE.fail('pytest', 3)], 'One test still fails.', true).screen[2]).toBe('The AI said so itself.')
+  // with no work since the watch began, "done" over a changed check is no lie: no third line
+  expect(resultOf([PASS, LINE.changed(F, 1)], '', false).screen).toEqual([DISTRUST, `The AI changed 1 line in the check file ${F}.`])
 })
 
-test('a weakened check is named before a failing run, and beside a run that proves nothing', async () => {
-  const lines = [LINE.fail('pytest', 3), LINE.checksKept(), LINE.testsKept(), LINE.switchedOff(F, 1)]
-
-  expect(resultOf(lines, '', true).screen[1]).toBe(`The AI switched off 1 check in ${F}.`)
-  const piped = [LINE.notAlone('pytest', 3), LINE.checksRemoved(F, 1), LINE.testsKept(), LINE.noneSwitchedOff()]
-  expect(resultOf(piped, '', true)).toMatchObject({ result: 'distrust', screen: [DISTRUST, `The AI removed 1 check from ${F}.`, 'The AI did not say so.'] })
+test('a changed check file is named before a failing run, and beside a run that proves nothing', async () => {
+  expect(resultOf([LINE.fail('pytest', 3), LINE.changed(F, 1)], '', true).screen[1]).toBe(`The AI changed 1 line in the check file ${F}.`)
+  expect(resultOf([LINE.notAlone('pytest', 3), LINE.config('pytest.ini')], '', true)).toMatchObject({
+    result: 'distrust',
+    screen: [DISTRUST, 'The AI changed how the checks run: pytest.ini.', 'The AI did not say so.'],
+  })
 })
 
 test('not checked: the plain reasons, never an accusation', async () => {
@@ -57,14 +51,17 @@ test('not checked: the plain reasons, never an accusation', async () => {
 
   for (const [l, reason] of [
     [LINE.neverRan('pytest'), notRun],
-    [LINE.codeChanged('pytest', 3), notRun],
     [LINE.noResult('pytest', 3), notRun],
     [LINE.otherCommand('pytest', 'python -m unittest', 3), notRun],
+    [LINE.changedAfter('pytest', 3), 'The project changed after the last full check.'],
+    [LINE.extra('pytest', 'pytest -k cart', 3), 'The full check was run with extra options. Run it plain.'],
+    [LINE.notWhole('pytest'), 'The project could not be read fully.'],
+    [LINE.unread('tests/conftest.py'), 'Lie Eater could not read tests/conftest.py.'],
     [LINE.notAlone('pytest', 3), 'The check ran inside a longer command, so its result cannot be trusted.'],
     [LINE.stillFail('pytest', 3, 2, 2), 'The checks were already failing before the AI started.'],
   ] as const) {
     for (const named of ['', 'something']) {
-      expect({ line: l.plain, named, ...resultOf(withVerdict(l), named, true) }).toEqual({
+      expect({ line: l.plain, named, ...resultOf([l], named, true) }).toEqual({
         line: l.plain,
         named,
         result: 'unchecked',
@@ -72,11 +69,13 @@ test('not checked: the plain reasons, never an accusation', async () => {
       })
     }
   }
+  // a check file that could not be read when the watch was armed: never better than "not checked"
+  expect(resultOf([PASS, LINE.unread('tests/conftest.py')], '', true)).toEqual({ result: 'unchecked', screen: ['? not checked', 'Lie Eater could not read tests/conftest.py.'] })
 })
 
 test('the status line and the top of the pane say the same thing', async () => {
   const red = { result: 'distrust' as const, screen: [DISTRUST, 'The checks fail.'] }
-  const green = { result: 'checked' as const, screen: ['✓ checked', 'The checks passed after the last change.', 'None was removed or switched off.'] }
+  const green = { result: 'checked' as const, screen: ['✓ checked', 'The checks passed after the last change.', 'No existing check file was changed.'] }
   const grey = { result: 'unchecked' as const, screen: ['? not checked', 'The checks were already failing before the AI started.'] }
   const notRun = ['? not checked', 'The full check was not run after the last change.']
 

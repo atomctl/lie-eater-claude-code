@@ -31,8 +31,10 @@ test('the bet tool and the done tool are registered when the session starts', as
   // the AI learns of the done tool where it learns of the bet
   expect(BET_DESCRIPTION).toContain('When the task is finished, call the done tool.')
   // the tools say plainly what they are for, and where the AI names what it changed in the checks
-  expect(DONE_DESCRIPTION).toContain('If you changed, removed or switched off a check, or a check still fails, say so in `broken`')
+  expect(DONE_DESCRIPTION).toContain('If you changed a check, or a check still fails, say so in `broken`')
   expect(DONE_DESCRIPTION).toContain('Only a run of the full check by itself')
+  // existing check files are frozen: the AI learns where new checks go
+  expect(DONE_DESCRIPTION).toContain('Existing check files are frozen. Put new checks in a new file. If an existing check must change, say why in `broken`: the person decides.')
 })
 
 test('a test run with no bet is refused; the person is not interrupted', async ($, on) => {

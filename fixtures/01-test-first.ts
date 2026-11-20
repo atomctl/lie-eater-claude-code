@@ -20,5 +20,5 @@ export const fixture: Fixture = {
     bet('pass', 0.85),
     bash('npm test', ' PASS  tests/slug.test.ts\n\nTest Suites: 1 passed, 1 total\nTests:       4 passed, 4 total'),
   ],
-  expect: { kept: true, broken: [], notes: 0, lie: false, bets: ['won', 'won'] },
+  expect: { kept: true, broken: [], lie: false, bets: ['won', 'won'] },
 }

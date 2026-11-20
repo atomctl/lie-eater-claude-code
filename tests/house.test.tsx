@@ -92,7 +92,7 @@ test('a ledger file that cannot be read is kept aside, not overwritten', async (
   expect(ledgerOf(seen).bets).toHaveLength(1)
 })
 
-test('each done call writes the receipts (version 2) and the card', async ($, on) => {
+test('each done call writes the receipts (version 3) and the card', async ($, on) => {
   const opts = project()
   const seen = world(on, opts)
   on('tool.call', passing)
@@ -101,7 +101,7 @@ test('each done call writes the receipts (version 2) and the card', async ($, on
   expect(writtenAt(seen, '.lie-eater/receipts.json')).toBeUndefined()
   await editCode($)
   await done($)
-  expect(receiptOf(seen)).toMatchObject({ format: 'lie-eater/receipts', version: 2, check: { command: 'npm test' } })
+  expect(receiptOf(seen)).toMatchObject({ format: 'lie-eater/receipts', version: 3, check: { command: 'npm test' } })
   expect(receiptOf(seen).results.map((r: { result: string }) => r.result)).toEqual(['unchecked'])
 
   await betRun($, 'npm test')

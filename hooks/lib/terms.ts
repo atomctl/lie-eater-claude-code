@@ -1,9 +1,10 @@
 // The proof: the watch (what is taken when Lie Eater arms itself), what is
-// tracked while the AI works, and the lines a `done` call is judged by.
+// tracked while the AI works, which run is the full check, and the lines a
+// `done` call is judged by.
 // Plain functions; no model, no engine.
-import type { FileNet, Looked, RulingLine, Terms, TestFile, ToolRecord, VerdictRun } from '../../types'
-import { WRAPPERS, chain, classifyCommand, isAlone, isShellEdit, oneLine } from './commands'
-import { TEST_SOURCE, checkLines, evidenceLine, fileCounts, isCodeFile, isTestFile } from './record'
+import type { Change, RulingLine, Terms, ToolRecord } from '../../types'
+import { WRAPPERS, chain, classifyCommand, isAlone, masked, oneLine, unquoted } from './commands'
+import { evidenceLine } from './record'
 import { LINE, isNoFoul, isNoRun } from './words'
 
 // A command on one line: a comment is no part of it, and neither is a line break.
@@ -29,109 +30,96 @@ export function bareCommand(command: string): string {
   return plainCommand(command)
     .replace(WRAPPERS, '')
     .replace(/ 2>&1$/, '')
-    .replace(/^(npm|pnpm|yarn|bun) run test\b/, '$1 test')
+    .replace(/^(npm|pnpm|yarn) run test\b/, '$1 test')
+    // `bun test` is Bun's own runner; `bun run test` runs the test script, as `npm test` does.
+    .replace(/^bun run test\b/, 'npm test')
 }
 
-// Flags that make a test run smaller. Some take a value, some stand alone.
-const NARROWS_WITH_VALUE = new Set([
-  '-k', '-m', '-t', '-g', '-run', '--grep', '--fgrep', '--filter', '--testNamePattern', '--testPathPattern',
-  '--testPathPatterns', '--testPathIgnorePatterns', '--deselect', '--ignore', '--ignore-glob', '--exclude',
-  '--shard', '--changedSince', '--related', '--findRelatedTests', '--project',
-])
-const NARROWS_ALONE = new Set([
-  '--co', '--collect-only', '--lf', '--last-failed', '--onlyChanged', '--changed', '--onlyFailures',
-  '--passWithNoTests', '--listTests', '--list', '--dry-run',
-])
-// Harmless flags whose next word is their value, not a path.
-const TAKES_VALUE = new Set([
-  '-n', '--tb', '-W', '-p', '-c', '--config', '--color', '--reporter', '--reporters', '--durations', '--cov',
-  '--cov-report', '--junitxml', '--outputFile', '--maxWorkers', '-j', '--jobs', '--timeout', '-timeout',
-  '--seed', '--rootdir', '-parallel', '--parallel', '-cpu', '-coverprofile', '--maxfail', '-count',
-])
-// `pytest tests/` and `pytest .` run everything: the test folder, or the folder itself, is no narrowing.
-const TEST_ROOT = /^(?:\.\/?|(?:\.\/)?(?:tests?|spec|__tests__)\/?)$/
+// Flags that change neither what runs nor how it is judged. Any other flag or
+// word makes a run another run. (`-r` takes pytest's report letters only: `-run` is go's filter.
+// No `-v`: npm, jest and vitest read it as `--version`, print it and exit 0.)
+const HARMLESS =
+  /^(?:-q|-qq|-s|-r[fEsxXpPaAwN]+|--verbose|--quiet|--silent|--ci|--run|--colou?rs?(?:=\S*)?|--no-colou?rs?|--tb=\S+|--reporter=\S+|--watch=false|--watchAll=false|--)$/
+// Where the output goes changes what can be read, not which run it is.
+const OUTPUT_TO = / ?(?:[0-9]|&)?>>? ?(?:&[0-9]|[^\s|;&]+)/g
 
-type Shape = { words: string[]; narrows: string[] }
+type Shape = { env: string; words: string[] }
 
-// What a test command asks for: its words (the runner and what it names) and
-// the narrowing it carries. Harmless flags fall away, wherever they stand.
-function shape(command: string): Shape {
-  const tokens = bareCommand(command).split(' ').filter(word => word !== '')
-  const out: Shape = { words: [], narrows: [] }
+// One command of a chain (quotes taken out): the values set in front of it, and
+// its words with no runner in front and no harmless flag.
+function shapeOf(part: string): Shape {
+  const command = part.replace(OUTPUT_TO, '').replace(/\s+/g, ' ').trim()
+  // What stands in front (`npx`, `time`, `env`, `uv run` …) may hold values set for the run: they count.
+  const front = command.match(WRAPPERS)?.[0] ?? ''
+  const env = front.split(' ').filter(word => /^[A-Za-z_]\w*=/.test(word))
+  // npm, pnpm and yarn run the same test script, and so does `bun run test` (`bun test` is Bun's own runner).
+  const bare = command.slice(front.length).replace(/^(?:(?:npm|pnpm|yarn) (?:run )?|bun run )test\b/, 'npm test').split(' ')
+  const words: string[] = []
 
-  for (let i = 0; i < tokens.length; i += 1) {
-    const token = tokens[i] ?? ''
-
-    if (!token.startsWith('-')) {
-      if (!TEST_ROOT.test(token)) out.words.push(token)
-      continue
-    }
-
-    const eq = token.indexOf('=')
-    const flag = eq === -1 ? token : token.slice(0, eq)
-    const glued = eq === -1 ? undefined : token.slice(eq + 1)
-
-    if (NARROWS_ALONE.has(flag)) {
-      out.narrows.push(flag)
-    } else if (NARROWS_WITH_VALUE.has(flag)) {
-      if (glued === undefined) i += 1
-      out.narrows.push(`${flag} ${glued ?? tokens[i] ?? ''}`)
-    } else if (/^-k\S/.test(token)) {
-      out.narrows.push(`-k ${token.slice(2)}`) // pytest -kfoo
-    } else if ((TAKES_VALUE.has(flag) && glued === undefined) || /^\d+$/.test(tokens[i + 1] ?? '')) {
-      i += 1
-    }
+  for (let i = 0; i < bare.length; i += 1) {
+    const word = bare[i] ?? ''
+    if (word === '--reporter') i += 1
+    else if (word !== '' && !HARMLESS.test(word)) words.push(word)
   }
 
-  return out
+  return { env: env.join(' '), words }
 }
 
-/**
- * Is the verdict command one of the commands of this chain? Variables and a
- * runner in front, and flags that do not narrow the run, are harmless wherever
- * they stand; a filter or a path makes it a different run. What stands around
- * it (`cd x &&`, `| tail`, `; echo $?`) does not change which run it is: when
- * that hides the exit code, the record's state comes from the counts (see
- * makeRecord).
- */
-export function isVerdictRun(command: string, verdict: string, known: readonly string[] = []): boolean {
-  const asked = shape(chain(verdict)[0] ?? '')
+// The quoted texts of a command: a run that differs from the locked command only inside quotes is another run.
+const quotes = (command: string): string => [...oneLine(command).matchAll(/'[^']*'|"(?:[^"\\]|\\.)*"/g)].join(' ')
 
-  if (asked.words.length === 0) {
-    return false
+/**
+ * How a command runs the locked command `verdict`: `full` when it is that
+ * command by itself, with only harmless flags added (`-q`, `--reporter=dot`);
+ * `extra` when it is that command by itself with anything else (a flag, a path,
+ * a test name, a value set in front: `pytest -k x`, `CI=1 npm test`);
+ * `chained` when it stands in a pipe or a chain; undefined when it is no run of it.
+ */
+export function runKind(command: string, verdict: string): 'full' | 'extra' | 'chained' | undefined {
+  const asked = shapeOf(chain(verdict)[0] ?? '')
+  const parts = chain(command).map(shapeOf)
+  const startsAlike = (ran: Shape): boolean => asked.words.every((word, i) => ran.words[i] === word)
+
+  if (asked.words.length === 0 || !parts.some(startsAlike)) {
+    return undefined
+  }
+  if (!isAlone(command)) {
+    return 'chained'
   }
 
-  const plain = (path: string): string => path.replace(/^\.\//, '')
-  // `pytest forth_test.py` in a folder whose only test file is forth_test.py
-  // runs everything: naming every test file the project has is no narrowing.
-  const namesThemAll = (extra: readonly string[]): boolean =>
-    known.length > 0 &&
-    extra.every(word => known.includes(plain(word))) &&
-    known.every(file => extra.some(word => plain(word) === file))
+  const ran = parts[0] as Shape
 
-  return chain(command).some(part => {
-    const ran = shape(part)
-    const startsAlike = asked.words.every((word, i) => ran.words[i] === word)
-    const extra = ran.words.slice(asked.words.length)
-
-    return (
-      startsAlike &&
-      (extra.length === 0 || namesThemAll(extra)) &&
-      ran.narrows.every(narrow => asked.narrows.includes(narrow))
-    )
-  })
+  return ran.words.length === asked.words.length && ran.env === asked.env && quotes(command) === quotes(verdict) ? 'full' : 'extra'
 }
 
-/**
- * Is this a narrowed run of the full check: the same command, with a filter or
- * a path (`npm test -- auth`, `pytest -k cart`)? Another runner (`pnpm test`,
- * `python -m unittest`) is not: the full check may have been guessed wrong.
- */
-export function isPartOf(command: string, verdict: string): boolean {
-  const asked = shape(chain(verdict)[0] ?? '')
+/** How a command runs the full check of this watch (or the test command behind `npm test`). */
+export function howRun(t: Terms, command: string): 'full' | 'extra' | 'chained' | undefined {
+  const kinds = [runKind(command, t.verdict), t.also === undefined ? undefined : runKind(command, t.also)]
 
-  return asked.words.length > 0 && chain(command).some(part => asked.words.every((word, i) => shape(part).words[i] === word))
+  return (['full', 'extra', 'chained'] as const).find(kind => kinds.includes(kind))
 }
+
+// A test runner by itself, with no path, name or filter: the words a plain full check has.
+const PLAIN_RUNNER =
+  /^(?:pytest|py\.test|jest|vitest(?: run)?|mocha|ava|tox|nox|rspec|phpunit|ctest|unittest|npm test|go test(?: \.\/\.\.\.)?|cargo test|deno test|dotnet test|mvn test|(?:\.\/)?gradlew? test|node --test|make (?:test|check))$/
+
+/** A test run that would be a full check by itself: one command, a plain runner, allowed flags only, nothing set in front. */
+export function isPlainRun(command: string): boolean {
+  const shape = shapeOf(chain(command)[0] ?? '')
+
+  return isAlone(command) && shape.env === '' && PLAIN_RUNNER.test(shape.words.join(' '))
+}
+
+/** Does this command run the full check of the watch, in any form? */
+export const isTheVerdict = (t: Terms, command: string): boolean => howRun(t, command) !== undefined
+
+// Flags with which a test command runs no check at all.
+const RUNS_NO_CHECK = /(?:^|\s)(--version|--help|-h|--collect-only|--co|--list\S*|--dry-run|--passWithNoTests)(?=\s|=|$)/
+
+/** The flag that makes this command run no check (`--version`, `--collect-only` …), or undefined. */
+export const cannotCheck = (command: string): string | undefined =>
+  // A chain or a pipe: only its first command would be matched against a run.
+  /(&&|\|\||[;|\n])/.exec(unquoted(command))?.[1] ?? RUNS_NO_CHECK.exec(unquoted(command))?.[1]
 
 /** The `test` script of a package.json, when it has a real one. */
 export function packageTestScript(text: string | undefined): string | undefined {
@@ -145,6 +133,25 @@ export function packageTestScript(text: string | undefined): string | undefined 
 }
 
 /**
+ * The `test` script when running it directly is the same run as `npm test`:
+ * it is one command, no `pretest` or `posttest` script runs with it, and no
+ * value is set in front.
+ */
+export function packageShortcut(text: string | undefined): string | undefined {
+  const script = packageTestScript(text)
+
+  try {
+    const { pretest, posttest } = (JSON.parse(text ?? '') as { scripts?: Record<string, unknown> }).scripts ?? {}
+
+    const isWhole = script !== undefined && isAlone(script) && pretest === undefined && posttest === undefined && !/^\s*[A-Za-z_]\w*=/.test(script)
+
+    return isWhole ? script : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * The project's test command, from its config files, or else from the names
  * of its files (the folder itself and its `tests` folder).
  */
@@ -152,8 +159,7 @@ export function detectVerdict(
   files: Record<string, string | undefined>,
   names: readonly string[] = [],
 ): string | undefined {
-  // shortcut: npm only; pnpm, yarn and bun projects type /check <command>
-  if (packageTestScript(files['package.json']) !== undefined) return 'npm test'
+    if (packageTestScript(files['package.json']) !== undefined) return 'npm test'
   if (files['pyproject.toml'] !== undefined || files['pytest.ini'] !== undefined) return 'pytest'
   if (files['Cargo.toml'] !== undefined) return 'cargo test'
   if (files['go.mod'] !== undefined) return 'go test ./...'
@@ -165,8 +171,7 @@ export function detectVerdict(
   return undefined
 }
 
-const isCodeEdit = (r: ToolRecord): boolean =>
-  (r.kind === 'edit' || r.kind === 'write') && r.state !== 'failed' && isCodeFile(r.target)
+const isEdit = (r: ToolRecord): boolean => (r.kind === 'edit' || r.kind === 'write') && r.state !== 'failed'
 const isGatedRun = (r: ToolRecord): boolean => r.kind === 'test' || r.kind === 'build'
 // A run whose result could be read: only such a run makes the next result "already known".
 const isReadRun = (r: ToolRecord): boolean => isGatedRun(r) && r.state !== 'unknown'
@@ -174,174 +179,133 @@ const newest = (records: readonly ToolRecord[], is: (r: ToolRecord) => boolean):
   records.findLast(is)
 
 /**
- * Arms a watch. `script` is the project's package.json test script: when the
- * full check is `npm test`, running that script's test command directly
- * (`npx vitest run`) is the same run. `names` are the file names of the
- * project, as they are now.
+ * When the full check is `npm test` (or pnpm, yarn, bun) and the package.json
+ * test `script` is one test command by itself, running that command directly
+ * (`npx vitest run`) is the same run. A part of a longer script is not.
  */
-export function armWatch(
-  verdict: string,
-  ctx: { id: number; at: number },
-  records: readonly ToolRecord[],
-  script?: string,
-  names: readonly string[] = [],
-): Terms {
-  const testFiles = names.filter(name => isTestFile(name) && TEST_SOURCE.test(name))
+export function alsoOf(verdict: string, script: string | undefined): string | undefined {
+  const viaPackage = /^(npm|pnpm|yarn) test$/.test(bareCommand(verdict))
+
+  return viaPackage && script !== undefined && isAlone(script) && classifyCommand(script) === 'test' ? bareCommand(script) : undefined
+}
+
+/**
+ * Arms a watch. `script` is the project's package.json test script (see
+ * `alsoOf`). The fingerprint and the frozen check files are taken by the live
+ * mod (referee.ts).
+ */
+export function armWatch(verdict: string, ctx: { id: number; at: number }, records: readonly ToolRecord[], script?: string): Terms {
   const lastTest = newest(records, r => r.kind === 'test')
   const startFailed = lastTest?.state === 'failed' ? lastTest.counts?.failed : undefined
-  const viaPackage = /^(npm|pnpm|yarn|bun) test$/.test(bareCommand(verdict))
-  const also = viaPackage && script !== undefined ? chain(script).map(bareCommand).find(part => classifyCommand(part) === 'test') : undefined
+  const also = alsoOf(verdict, script)
 
   return {
     id: ctx.id,
     at: ctx.at,
     verdict: tidy(verdict),
     ...(also === undefined ? {} : { also }),
-    ...(testFiles.length === 0 ? {} : { testFiles }),
     startRecord: records.at(-1)?.id ?? 0,
     ...(startFailed === undefined ? {} : { startFailed }),
     fixes: 0,
-    lastCodeEdit: newest(records, isCodeEdit)?.id ?? 0,
+    lastEdit: newest(records, isEdit)?.id ?? 0,
     lastGatedRun: newest(records, isGatedRun)?.id ?? 0,
     lastReadRun: newest(records, isReadRun)?.id ?? 0,
   }
 }
 
-/** Is this command a run of the full check? */
-export const isTheVerdict = (t: Terms, command: string): boolean =>
-  isVerdictRun(command, t.verdict, t.testFiles) || (t.also !== undefined && isVerdictRun(command, t.also, t.testFiles))
+/** Has anything changed since the watch was armed, as far as the record shows (an edit, or an accepted change)? For the status line only. */
+export const hasChanged = (t: Terms): boolean => t.lastEdit > t.startRecord || t.unproven === true
 
-/** Takes one new record into the watch's tally. */
-export function track(t: Terms, r: ToolRecord): Terms {
+/**
+ * Takes one new record into the watch's tally. `print` is the project's
+ * fingerprint taken when this run started: a run of the full check stands
+ * only while the project is as it was then. `elsewhere`: the shell stood
+ * outside the folder the watch walks, so the run is no full check.
+ */
+export function track(t: Terms, r: ToolRecord, print?: string, elsewhere = false): Terms {
   const next: Terms = { ...t }
-  const isOk = r.state !== 'failed'
 
   // Tool calls that ran side by side can arrive out of order: ids only move forward.
-  if (isCodeEdit(r) || (r.tool === 'Bash' && isOk && isShellEdit(r.target))) {
-    next.lastCodeEdit = Math.max(t.lastCodeEdit, r.id)
-  }
+  if (isEdit(r)) next.lastEdit = Math.max(t.lastEdit, r.id)
   if (isGatedRun(r)) next.lastGatedRun = Math.max(t.lastGatedRun, r.id)
   if (isReadRun(r)) next.lastReadRun = Math.max(t.lastReadRun ?? 0, r.id)
 
-  if (r.tool === 'Bash') {
-    if (isTheVerdict(t, r.target)) {
-      const ran: VerdictRun = {
+  if (r.tool !== 'Bash') {
+    return next
+  }
+
+  const ran = howRun(t, r.target) ?? (r.kind === 'test' ? 'other' : undefined)
+  const how = ran === 'full' && elsewhere ? 'elsewhere' : ran
+
+  if (how === 'full') {
+    if (t.fullRun === undefined || r.id > t.fullRun.record) {
+      next.fullRun = {
         record: r.id,
         state: r.state,
         line: evidenceLine(r),
         ...(r.counts === undefined ? {} : { failed: r.counts.failed }),
+        ...(print === undefined ? {} : { print }),
       }
-      if (t.verdictRun === undefined || r.id > t.verdictRun.record) next.verdictRun = ran
-      if (isAlone(r.target) && (t.aloneRun === undefined || r.id > t.aloneRun.record)) next.aloneRun = ran
-      // A failing full check before any code change is where the work starts: those checks already failed.
-      if (r.state === 'failed' && r.counts !== undefined && next.lastCodeEdit <= t.startRecord) next.startFailed = r.counts.failed
-    } else if (r.kind === 'test' && (t.otherRun === undefined || r.id > t.otherRun.record)) {
-      next.otherRun = { record: r.id, command: r.target.slice(0, 80) }
     }
+    // A failing full check on the project as it was armed is where the work starts: those checks already failed.
+    if (r.state === 'failed' && r.counts !== undefined && print !== undefined && print === t.print) next.startFailed = r.counts.failed
+  } else if (how !== undefined && (t.tried === undefined || r.id > t.tried.record)) {
+    next.tried = { record: r.id, how, command: masked(r.target).slice(0, 80) }
   }
 
   return next
 }
 
-/** The project's test files as they are now: their counts and their check lines. */
-export function snapshotOf(texts: Record<string, string>): Record<string, TestFile> {
-  return Object.fromEntries(Object.entries(texts).map(([path, text]) => [path, { ...fileCounts(text), checks: checkLines(text) }]))
+// The full check: its newest run stands while the project is as it was when that run started (`print`).
+function verdictLine(t: Terms, print: string | undefined): RulingLine {
+  // The lines go into the receipts: the command is kept masked.
+  const v = masked(t.verdict)
+
+  if (t.print === undefined || print === undefined) {
+    return LINE.notWhole(v)
+  }
+
+  const full = t.fullRun
+
+  if (full !== undefined && full.print === print) {
+    if (full.state === 'unknown') return LINE.noResult(v, full.record)
+    if (full.state === 'clean') return LINE.pass(v, full.record)
+
+    return full.failed !== undefined && t.startFailed !== undefined && full.failed <= t.startFailed
+      ? LINE.stillFail(v, full.record, full.failed, t.startFailed)
+      : LINE.fail(v, full.record)
+  }
+
+  // No full run stands for the files as they are: a newer try says why.
+  const tried = t.tried !== undefined && t.tried.record > (full?.record ?? 0) ? t.tried : undefined
+
+  if (tried?.how === 'extra') return LINE.extra(v, tried.command, tried.record)
+  if (tried?.how === 'chained') return LINE.notAlone(v, tried.record)
+  if (tried?.how === 'other') return LINE.otherCommand(v, plainCommand(tried.command), tried.record)
+  if (tried?.how === 'elsewhere') return LINE.elsewhere(v, tried.record)
+
+  return full === undefined ? LINE.neverRan(v) : LINE.changedAfter(v, full.record)
+}
+
+const FILE_LINE = {
+  config: (c: Change) => LINE.config(c.file),
+  gone: (c: Change) => LINE.gone(c.file),
+  changed: (c: Change) => LINE.changed(c.file, c.n),
+  only: (c: Change) => LINE.only(c.file),
 }
 
 /**
- * The checks themselves come from the test files: each file of the snapshot as
- * it is now (`now`; undefined when it cannot be read) against the snapshot,
- * however it was changed. A test file that was not in the snapshot (the AI
- * made it since the watch was armed) is never charged.
+ * The lines a `done` call is judged by: the full check, one line per check
+ * file that changed (see frozen.ts `classify`), and one per check file that
+ * could not be read when the watch was armed. `print` is the project's
+ * fingerprint now; undefined when the project could not be read fully.
  */
-export function measure(snapshot: Record<string, TestFile>, now: Record<string, string | undefined>): Looked {
-  const net: Record<string, FileNet> = {}
-  const gone: string[] = []
-
-  for (const [path, was] of Object.entries(snapshot)) {
-    const text = now[path]
-
-    if (text === undefined) {
-      gone.push(path)
-      continue
-    }
-
-    const counts = fileCounts(text)
-    const kept = new Set(checkLines(text))
-    net[path] = {
-      asserts: counts.asserts - was.asserts,
-      tests: counts.tests - was.tests,
-      skips: counts.skips - was.skips,
-      tables: counts.tables - was.tables,
-      removed: was.checks.filter(line => !kept.has(line)).slice(0, 3),
-    }
-  }
-
-  return { net, gone }
+export function rule(t: Terms, changes: readonly Change[], print: string | undefined, unread: readonly string[] = []): RulingLine[] {
+  return [verdictLine(t, print), ...changes.map(c => FILE_LINE[c.how](c)), ...unread.map(LINE.unread)]
 }
 
-function verdictLine(t: Terms): RulingLine {
-  const run = t.verdictRun
-
-  if (run === undefined) {
-    const other = t.otherRun
-
-    if (other === undefined) return LINE.neverRan(t.verdict)
-
-    return isPartOf(other.command, t.verdict) || (t.also !== undefined && isPartOf(other.command, t.also))
-      ? LINE.otherWay(t.verdict, other.command, other.record)
-      : LINE.otherCommand(t.verdict, plainCommand(other.command), other.record)
-  }
-  // Only a run by itself proves that the checks pass: in a pipe or a chain the exit code in
-  // sight may be another command's, and the output can be cut. When the newest
-  // run is such a run, and no run by itself is newer than the code, it is not proven.
-  const alone = t.aloneRun
-  const isFresh = alone !== undefined && alone.record >= t.lastCodeEdit
-
-  if (!isFresh && run.record !== alone?.record) return LINE.notAlone(t.verdict, run.record)
-  if (alone === undefined || !isFresh) return LINE.codeChanged(t.verdict, run.record)
-  if (alone.state === 'unknown') return LINE.noResult(t.verdict, alone.record)
-  if (alone.state === 'clean') return LINE.pass(t.verdict, alone.record)
-
-  return alone.failed !== undefined && t.startFailed !== undefined && alone.failed <= t.startFailed
-    ? LINE.stillFail(t.verdict, alone.record, alone.failed, t.startFailed)
-    : LINE.fail(t.verdict, alone.record)
-}
-
-/**
- * The lines a `done` call is judged by: the full check, then the checks
- * themselves (removed, deleted, switched off), then a note (soft, never
- * broken): checks that went into a table. `seen` is the test files of the
- * snapshot as they are now (see `measure`).
- */
-export function rule(t: Terms, seen: Looked): RulingLine[] {
-  const files = Object.entries(seen.net)
-  // One act, one charge: a file that lost a test is judged by the next rule only.
-  // Tests and checks that went into a table (`test.each`, `parametrize`) are not counted as lost.
-  const standing = files.filter(([, net]) => net.tests >= 0 || net.tables > 0)
-  const removed = standing.find(([, net]) => net.asserts < 0 && net.tables <= 0)
-  const moved = standing.find(([, net]) => net.asserts < 0 && net.tables > 0)
-  const lostTest = files.find(([, net]) => net.tests < 0 && net.tables <= 0)
-  const skipped = files.find(([, net]) => net.skips > 0)
-  const gone = seen.gone[0]
-
-  return [
-    verdictLine(t),
-    removed ? LINE.checksRemoved(removed[0], -removed[1].asserts) : moved ? LINE.checksInTable() : LINE.checksKept(),
-    gone !== undefined
-      ? LINE.fileDeleted(gone)
-      : lostTest
-        ? LINE.testsDeleted(lostTest[0], -lostTest[1].tests)
-        : LINE.testsKept(),
-    skipped ? LINE.switchedOff(skipped[0], skipped[1].skips) : LINE.noneSwitchedOff(),
-    // A table can hide a removed check: the rules cannot tell, so the person is asked to look.
-    ...(moved ? [LINE.tableNote(moved[0], -moved[1].asserts, moved[1].tables, moved[1].removed)] : []),
-  ]
-}
-
-/** A note never breaks the result. */
 export function isKept(lines: readonly RulingLine[]): boolean {
-  return lines.every(l => l.pass || l.soft === true)
+  return lines.every(l => l.pass)
 }
 
 // "None" in place of a breach names nothing.
@@ -357,5 +321,5 @@ export const namesBreach = (named: string): boolean => !NAMES_NOTHING.test(named
  * run stands for the code as it is (that proves nothing).
  */
 export function isLie(lines: readonly RulingLine[], worked: boolean, named: string): boolean {
-  return worked && lines.some(l => !l.pass && !l.soft && !isNoFoul(l) && !isNoRun(l)) && !namesBreach(named)
+  return worked && lines.some(l => !l.pass && !isNoFoul(l) && !isNoRun(l)) && !namesBreach(named)
 }

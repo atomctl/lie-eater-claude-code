@@ -10,9 +10,9 @@ import { rec } from './helpers'
 
 const NOW = '2026-11-20T12:00:00.000Z'
 const play = (verdict: string, state: 'clean' | 'failed' | 'unknown'): Terms =>
-  [rec({ id: 3, kind: 'test', target: verdict, state })].reduce(track, armWatch(verdict, { id: 1, at: 5000 }, []))
+  track({ ...armWatch(verdict, { id: 1, at: 5000 }, []), print: 'p' }, rec({ id: 3, kind: 'test', target: verdict, state }), 'p')
 const ruling = (watch: Terms, more: Partial<Ruling> = {}): Ruling => {
-  const lines = rule(watch, { net: {}, gone: [] })
+  const lines = rule(watch, [], 'p')
 
   return { id: 1, termsId: 1, turn: 1, at: 6000, lines, ...resultOf(lines, '', true), lie: false, ...more }
 }
@@ -31,10 +31,9 @@ test('the card of a checked result: the three lines, the evidence, the bets', as
     'LIE EATER',
     '✓ checked',
     'The checks passed after the last change.',
-    'None was removed or switched off.',
+    'No existing check file was changed.',
     'npm test · 2026-11-20',
     'The tests really pass',
-    'No test was switched off',
     'The AI said "90% sure". It was right 2 of 3 times.',
     'Lie Eater checks the proof before you believe it.',
   ]) {

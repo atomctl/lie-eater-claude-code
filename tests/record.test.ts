@@ -1,16 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import {
-  classifyCommand,
-  evidenceLine,
-  isCodeFile,
-  isShellEdit,
-  isTestFile,
-  checkLines,
-  fileCounts,
-  makeRecord,
-  parseCounts,
-} from '../hooks/lib/record'
+import { classifyCommand, evidenceLine, isTestFile, makeRecord, parseCounts } from '../hooks/lib/record'
 import { isAlone } from '../hooks/lib/commands'
 import { rec } from './helpers'
 
@@ -79,31 +69,6 @@ test('isTestFile knows a test file from its path', async () => {
   }
 })
 
-test('isCodeFile: a document is not code', async () => {
-  expect(isCodeFile('src/a.py')).toBe(true)
-  expect(isCodeFile('README.md')).toBe(false)
-  expect(isCodeFile('notes.txt')).toBe(false)
-  expect(isCodeFile('docs/guide.rst')).toBe(false)
-})
-
-test('fileCounts counts checks, tests, skip marks and tables; checkLines lists the checks', async () => {
-  expect(fileCounts('assert total == 34\nassert name == "a"')).toMatchObject({ asserts: 2 })
-  expect(checkLines('def test_a():\n    assert total == 34\n    x = 1\n    assert name == "a"')).toEqual([
-    'assert total == 34',
-    'assert name == "a"',
-  ])
-  expect(fileCounts('def test_a():\n  ...\ndef test_b():\n  ...')).toMatchObject({ tests: 2 })
-  expect(fileCounts('it("logs in", () => {')).toMatchObject({ tests: 1, skips: 0 })
-  expect(fileCounts('it.skip("logs in", () => {')).toMatchObject({ skips: 1 })
-  expect(fileCounts('it.only("a", () => {')).toMatchObject({ skips: 1 })
-
-  const ten = Array.from({ length: 10 }, (_, i) => `expect(f(${i})).toBe(${i})`).join('\n')
-  expect(fileCounts(ten)).toMatchObject({ asserts: 10, tables: 0 })
-  expect(fileCounts('test.each(cases)("f", (i, o) => { expect(f(i)).toBe(o) })')).toMatchObject({ asserts: 1, tables: 1 })
-  // a long check line is cut, so the repair order stays readable
-  expect(checkLines(`expect(x).toBe('${'y'.repeat(200)}')`)[0]).toHaveLength(120)
-})
-
 test('makeRecord reads how a call ended', async () => {
   const made = (raw: Parameters<typeof makeRecord>[0]) => makeRecord(raw, 7, 2, 1000)
 
@@ -161,6 +126,8 @@ test('evidenceLine shows the command and its last output line, cut to 160 charac
   )
   expect(evidenceLine(rec({ tool: 'Edit', kind: 'edit', target: 'src/a.py' }))).toBe('Edit src/a.py')
   expect(evidenceLine(rec({ target: 'x'.repeat(300), output: 'ok' }))).toHaveLength(160)
+  // a value set in front of the command, or a quoted text, may be a secret: it is never kept
+  expect(evidenceLine(rec({ target: 'API_KEY=sk-1 pytest -k "secret"', output: '3 passed in 1s' }))).toBe('API_KEY=… pytest -k "…" → 3 passed in 1s')
 })
 
 // ---- from the review of days 1 and 2 ----
@@ -211,75 +178,6 @@ test('isTestFile knows .mjs, .cjs and .mts test files', async () => {
   }
 })
 
-test('fileCounts: a regex .test( and a model.fit( are not tests or focus marks', async () => {
-  expect(fileCounts('if (/x/.test(name)) { model.fit(X, y) }')).toMatchObject({ tests: 0, skips: 0 })
-  expect(fileCounts('fit("a", () => {})')).toMatchObject({ tests: 1, skips: 1 })
-})
-
-test('fileCounts: a test that is commented out is gone', async () => {
-  expect(fileCounts('it("a", () => {\n  expect(a).toBe(1)\n})')).toMatchObject({ asserts: 1, tests: 1 })
-  expect(fileCounts('// it("a", () => {\n//   expect(a).toBe(1)\n// })')).toMatchObject({ asserts: 0, tests: 0 })
-  expect(fileCounts('# def test_a():\n#     assert a == 1')).toMatchObject({ asserts: 0, tests: 0 })
-  expect(checkLines('# assert a == 1')).toEqual([])
-  // a Rust attribute starts with # and is not a comment
-  expect(fileCounts('#[test]\nfn adds() { assert_eq!(1, 1); }')).toMatchObject({ tests: 1, asserts: 1 })
-})
-
-test('isShellEdit: a shell command that changes files', async () => {
-  for (const command of [
-    "sed -i '' 's/a/b/' src/a.ts",
-    'git checkout -- src/a.ts',
-    'git stash',
-    'npx prettier --write src',
-    'npx eslint --fix src',
-    'echo "x = 1" >> src/config.py',
-    'mv src/a.ts src/b.ts',
-  ]) {
-    expect(`${command} ${isShellEdit(command)}`).toBe(`${command} true`)
-  }
-  for (const command of ['npm test 2>&1', 'npm test > /dev/null', 'ls -la', 'git status', 'cat a.ts', 'npm test > out.log']) {
-    expect(`${command} ${isShellEdit(command)}`).toBe(`${command} false`)
-  }
-})
-
-// ---- from the final review ----
-
-test('isCodeFile: only source code is code; a changelog, docs and config are not', async () => {
-  for (const path of ['src/a.py', 'src/a.ts', 'web/App.vue', 'cmd/main.go', 'lib/x.rb', 'tests/a.test.mjs']) {
-    expect(`${path} ${isCodeFile(path)}`).toBe(`${path} true`)
-  }
-  for (const path of ['CHANGELOG', 'docs/usage.mdx', 'package.json', 'README.md', '.env', 'Makefile', 'ci.yml']) {
-    expect(`${path} ${isCodeFile(path)}`).toBe(`${path} false`)
-  }
-})
-
-test('isShellEdit: tidying up with git, or moving a log, changes no code', async () => {
-  for (const command of [
-    'git checkout -b fix/x',
-    'git checkout -b fix/x && git commit -m "done"',
-    'git switch -c feature',
-    'git stash list',
-    'git reset --soft HEAD~1',
-    'git add -A && git commit -m "x" && git push',
-    'cp .env.example .env',
-    'mv out.log logs/',
-    "sed -i '' 's/a/b/' README.md",
-  ]) {
-    expect(`${command} ${isShellEdit(command)}`).toBe(`${command} false`)
-  }
-  for (const command of [
-    'git checkout -- src/a.ts',
-    'git checkout main',
-    'git stash',
-    'git stash pop',
-    'git reset --hard',
-    'git restore src/a.ts',
-    'git pull',
-  ]) {
-    expect(`${command} ${isShellEdit(command)}`).toBe(`${command} true`)
-  }
-})
-
 test('a run that prints its own counts, or hides its output, has no clear result', async () => {
   const made = (command: string, text: string) => makeRecord({ tool: 'Bash', command, text }, 1, 1, 0).state
 
@@ -295,14 +193,6 @@ test('a run that prints its own counts, or hides its output, has no clear result
 test('a test run that ran no test has no clear result', async () => {
   expect(makeRecord({ tool: 'Bash', command: 'npm test', text: 'Tests: 0 passed, 0 total' }, 1, 1, 0).state).toBe('unknown')
 })
-
-test('fileCounts: a conditional skip and a todo are not "switched off"', async () => {
-  expect(fileCounts('@pytest.mark.skipif(sys.platform == "win32")\ndef test_a():\n    assert a')).toMatchObject({ skips: 0 })
-  expect(fileCounts("it.todo('handles unicode')")).toMatchObject({ skips: 0 })
-  expect(fileCounts('@pytest.mark.skip\ndef test_a():\n    assert a')).toMatchObject({ skips: 1 })
-})
-
-// ---- from the first soak game ----
 
 test('read-only commands after a piped test run do not hide its result', async () => {
   const made = (command: string, text: string) => makeRecord({ tool: 'Bash', command, text }, 1, 1, 0).state
@@ -546,7 +436,6 @@ test('the body of a heredoc and a comment are text, not commands', async () => {
   expect(classifyCommand('cat <<\\EOF > notes.txt\nnpm test\nEOF')).toBe('other')
   // what stands behind the heredoc is a command again
   expect(classifyCommand("cat > a.txt <<'EOF'\ntext\nEOF\nnpm test")).toBe('test')
-  expect(isShellEdit("cat > src/a.py <<'EOF'\nx = 1\nEOF")).toBe(true)
   // a `#` inside a word or inside quotes starts no comment
   expect(classifyCommand('git commit -m "fix #12" && npm test')).toBe('test')
   expect(classifyCommand('curl http://localhost/#top && npm test')).toBe('test')

@@ -14,18 +14,16 @@ export type Fixture = {
   story: string
   /** The full check of the watch. */
   verdict: string
-  /** What happened after the summon, in order. */
+  /** What happened after the watch was armed, in order. */
   steps: Step[]
-  /** The project's test files when the watch was armed, and as they are when the agent calls done (left out: gone). */
-  testFiles?: { summon: Record<string, string>; done: Record<string, string> }
+  /** The project's check files when the watch was armed, and as they are when the agent calls done (left out: gone). */
+  testFiles?: { armed: Record<string, string>; done: Record<string, string> }
   /** What the agent named as broken when it called done; left out when it named nothing. */
   named?: string
   expect: {
     kept: boolean
     /** The lines that must be reported as broken (a line that could not be seen is not broken). */
     broken: TermId[]
-    /** 1 when a note must be shown (checks moved into a table), else 0. */
-    notes: number
     /** Whether the done call is a lie: a broken rule the agent did not name. */
     lie: boolean
     /** How each bet must end, in order. */

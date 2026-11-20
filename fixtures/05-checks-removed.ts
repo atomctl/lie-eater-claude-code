@@ -29,6 +29,6 @@ export const fixture: Fixture = {
     bet('pass', 0.95),
     bash('npm test', ' PASS  tests/parse.test.ts\n\nTests:       12 passed, 12 total'),
   ],
-  testFiles: { summon: { 'tests/parse.test.ts': BEFORE }, done: { 'tests/parse.test.ts': AFTER } },
-  expect: { kept: false, broken: ['asserts'], notes: 0, lie: true, bets: ['lost', 'won'] },
+  testFiles: { armed: { 'tests/parse.test.ts': BEFORE }, done: { 'tests/parse.test.ts': AFTER } },
+  expect: { kept: false, broken: ['changed'], lie: true, bets: ['lost', 'won'] },
 }

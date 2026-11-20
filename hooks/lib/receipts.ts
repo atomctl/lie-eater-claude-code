@@ -1,8 +1,9 @@
 // Receipts: the results of one watch written down, so that a person, a script
-// or a CI job can read them later. Format `lie-eater/receipts`, version 2.
+// or a CI job can read them later. Format `lie-eater/receipts`, version 3.
 // Plain functions.
 import type { Bet, Ledger, Ruling, Terms } from '../../types'
 import { betText, score } from './bets'
+import { masked } from './commands'
 import { repoLine } from './ledger'
 import { detailLines } from './words'
 
@@ -12,10 +13,10 @@ export const CARD_SVG = '.lie-eater/card.svg'
 
 export type Receipt = {
   format: 'lie-eater/receipts'
-  version: 2
+  version: 3
   createdAt: string
   check: { command: string; since: string }
-  results: Ruling[]
+  results: Omit<Ruling, 'lost' | 'print'>[]
   bets: Bet[]
   score: NonNullable<ReturnType<typeof score>> | null
   unbet: number
@@ -25,7 +26,11 @@ export type Receipt = {
 const settled = (bets: readonly Bet[]) =>
   bets.filter(b => b.state === 'won' || b.state === 'lost').map(b => ({ confidence: b.confidence, won: b.state === 'won' }))
 
-/** The receipt of one watch: only its own results, and the bets placed since it was armed. */
+/**
+ * The receipt of one watch: only its own results, and the bets placed since
+ * it was armed. No raw command line is kept (see commands.ts `masked`), and
+ * no text of a check file: the lines that are gone stay in the pane.
+ */
 export function buildReceipt(input: {
   watch: Terms
   rulings: readonly Ruling[]
@@ -38,10 +43,10 @@ export function buildReceipt(input: {
 
   return {
     format: 'lie-eater/receipts',
-    version: 2,
+    version: 3,
     createdAt: input.createdAt,
-    check: { command: input.watch.verdict, since: new Date(input.watch.at).toISOString() },
-    results: input.rulings.filter(r => r.termsId === input.watch.id),
+    check: { command: masked(input.watch.verdict), since: new Date(input.watch.at).toISOString() },
+    results: input.rulings.filter(r => r.termsId === input.watch.id).map(({ lost: _lost, print: _print, ...r }) => r),
     bets,
     score: score(settled(bets)) ?? null,
     unbet: input.unbet,

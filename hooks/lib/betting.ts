@@ -6,10 +6,9 @@ import type { EngineInterface } from 'claude-code'
 
 import type { Bet, Terms, ToolRecord } from '../../types'
 import { betText, callBet, closeTurn, gateText, isGated, postBet, settleBet } from './bets'
-import { isAlone } from './commands'
 import { recordBet } from './house'
 import { META_START, SHAPE } from './state'
-import { isTheVerdict } from './terms'
+import { howRun } from './terms'
 
 // Each file that touches state declares its own atoms (see state.ts).
 const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
@@ -97,7 +96,7 @@ export async function settle($: EngineInterface, r: ToolRecord, before: Terms | 
 
   // A run whose result could not be read made nothing known.
   const lastRead = before.lastReadRun ?? before.lastGatedRun
-  const hadChange = lastRead === 0 || before.lastCodeEdit > lastRead
+  const hadChange = lastRead === 0 || before.lastEdit > lastRead
   let settled: Bet | undefined
   await update($, bets, list =>
     list.map(b => {
@@ -114,15 +113,16 @@ export async function settle($: EngineInterface, r: ToolRecord, before: Terms | 
     return undefined
   }
 
-  // A passing run of the full check by itself may be the end of the task; a piped one cannot be.
-  const isVerdict = isTheVerdict(before, r.target)
-  const hint = !isVerdict
-    ? ''
-    : !isAlone(r.target)
+  // A passing run of the full check by itself may be the end of the task; a piped one, or one with extra options, cannot be.
+  const how = howRun(before, r.target)
+  const hint =
+    how === 'chained'
       ? ` This run cannot show that the work is done: run \`${before.verdict}\` by itself before you call done.`
-      : r.state === 'clean'
-        ? ' If the task is finished, call the done tool.'
-        : ''
+      : how === 'extra'
+        ? ` This run is not the full check: run \`${before.verdict}\` exactly, by itself, before you call done.`
+        : how === 'full' && r.state === 'clean'
+          ? ' If the task is finished, call the done tool.'
+          : ''
 
   if (done.state === 'void') {
     return `Lie Eater: bet #${done.id} VOID. Nothing changed since the last run.${hint}`

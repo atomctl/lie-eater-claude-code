@@ -6,6 +6,11 @@ import { repoLine } from './ledger'
 import { detailLines } from './words'
 
 const MARK: Record<ToolRecord['state'], string> = { clean: '✓', failed: '✗', unknown: '?' }
+
+/** The original lines of each changed check file that are gone: shown here only, never sent or written. */
+function lostRows(lost: Ruling['lost']): string[] {
+  return Object.entries(lost ?? {}).flatMap(([file, lines]) => [`Gone from ${file}:`, ...lines.map(line => `    ${line.trim()}`)])
+}
 const RECORDS_SHOWN = 5
 const BETS_SHOWN = 3
 
@@ -59,7 +64,8 @@ function scoreLines(bets: readonly Bet[], unbet: number): string[] {
 
 /**
  * Details, for an expert: the full check, the evidence of the newest result
- * (which run counted, the files and lines), the bets, the newest tool calls.
+ * (which run counted, the check files that changed and the lines gone from
+ * them), the bets, the newest tool calls.
  * Every line is cut to the pane's width.
  */
 export function detailRows(view: {
@@ -75,7 +81,7 @@ export function detailRows(view: {
 
   return [
     view.watch === null ? 'Full check: none found yet' : `Full check: ${view.watch.verdict}`,
-    ...(view.last === undefined ? [] : detailLines(view.last.lines)),
+    ...(view.last === undefined ? [] : [...detailLines(view.last.lines), ...lostRows(view.last.lost)]),
     ...scoreLines(view.bets, view.unbet),
     ...betRows(view.bets),
     ...(repo === undefined ? [] : [repo]),

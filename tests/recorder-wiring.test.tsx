@@ -122,7 +122,7 @@ test('a file is named by its path inside the project, and a folder above the pro
   await $.tool.call({ tool: 'Bash', command: 'npm test' })
   const out = await done($)
 
-  expect(out).toContain('✓ No check was removed from a test')
+  expect(out).toContain('✓ The tests really pass')
   expect(out.split('\n')[0]).toBe('✓ checked')
 })
 
@@ -141,8 +141,8 @@ test('a result names a test file by its path inside the project', async ($, on) 
   files['price.test.ts'] = "it.skip('adds', () => {})"
   const out = await done($)
 
-  expect(out).toContain('The AI switched off 1 check in tests/price.test.ts.')
-  expect(out).toContain('    tests/price.test.ts: new skip or only marks: 1')
+  expect(out).toContain('The AI changed 1 line in the check file tests/price.test.ts.')
+  expect(out).toContain('    tests/price.test.ts: 1 line changed')
   expect(out).not.toContain('/home/me')
 })
 
@@ -157,7 +157,7 @@ test('removing a cache in front of the test run deletes no test', async ($, on) 
   await $.tool.call({ tool: 'Bash', command: 'rm -rf node_modules/.cache && npm test' })
   const out = await done($)
 
-  expect(out).toContain('✓ No test was deleted')
+  expect(out).not.toContain('✗ The AI')
   // in a chain the run proves nothing: not checked, never "don't trust"
   expect(out.split('\n')[0]).toBe('? not checked')
 })

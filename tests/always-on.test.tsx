@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { MATH, PANE, bash, betRun, done, editCode, endTurn, paneLines, project, prompt, run, start, world } from './kit'
+import { MATH, PANE, bash, betRun, done, editCode, editFile, endTurn, paneLines, project, prompt, run, start, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' })
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
@@ -51,19 +51,17 @@ test('honest work with a passing full check: "checked", silently; the AI hears i
   await betRun($, 'npm test')
   const reply = String((await done($)).result)
 
-  expect(reply.split('\n').slice(0, 3)).toEqual(['✓ checked', 'The checks passed after the last change.', 'None was removed or switched off.'])
+  expect(reply.split('\n').slice(0, 3)).toEqual(['✓ checked', 'The checks passed after the last change.', 'No existing check file was changed.'])
   expect(status(seen)).toBe('Lie Eater ✓ checked')
   expect(seen).toMatchObject(quiet)
 })
 
-test('the AI adds new checks: "checked"; they are watched from then on', async ($, on) => {
+test('the AI adds new checks in a new file: "checked"; they are watched from then on', async ($, on) => {
   const opts = project()
   const seen = world(on, opts)
   on('tool.call', passing)
 
   await start($)
-  await editCode($, 'tests/math.test.ts')
-  opts.files['math.test.ts'] = `${MATH}\nit('multiplies', () => {\n  expect(mul(2, 3)).toBe(6)\n})\n`
   await $.tool.call({ tool: 'Write', file_path: 'tests/more.test.ts', content: '…' })
   opts.files['more.test.ts'] = "it('divides', () => {\n  expect(div(6, 3)).toBe(2)\n})\n"
   opts.dirs?.tests?.push('more.test.ts')
@@ -74,7 +72,7 @@ test('the AI adds new checks: "checked"; they are watched from then on', async (
   opts.files['more.test.ts'] = "it.skip('divides', () => {\n  expect(div(6, 3)).toBe(2)\n})\n"
   await editCode($, 'tests/more.test.ts')
   await betRun($, 'npm test')
-  expect(String((await done($)).result).split('\n')[1]).toBe('The AI switched off 1 check in tests/more.test.ts.')
+  expect(String((await done($)).result).split('\n')[1]).toBe('The AI changed 1 line in the check file tests/more.test.ts.')
   expect(seen.toasts).toEqual([RED])
 })
 
@@ -87,7 +85,7 @@ test('a check put back with git checkout: "checked"', async ($, on) => {
   opts.files['math.test.ts'] = GUTTED
   await editCode($, 'tests/math.test.ts')
   await betRun($, 'npm test')
-  expect(String((await done($)).result).split('\n')[1]).toBe('The AI removed 1 check from tests/math.test.ts.')
+  expect(String((await done($)).result).split('\n')[1]).toBe('The AI changed 4 lines in the check file tests/math.test.ts.')
 
   await bash($, 'git checkout -- tests/math.test.ts')
   opts.files['math.test.ts'] = MATH
@@ -166,8 +164,9 @@ test('green, then done again with no change: still "checked"', async ($, on) => 
   expect(status(seen)).toBe('Lie Eater ✓ checked')
 })
 
-test('a narrowed run after a green result proves nothing new: "not checked"', async ($, on) => {
-  const seen = world(on, project())
+test('a run with extra options after a change proves nothing new: "not checked", with the plain command', async ($, on) => {
+  const opts = project()
+  const seen = world(on, opts)
   on('tool.call', passing)
 
   await start($)
@@ -175,10 +174,13 @@ test('a narrowed run after a green result proves nothing new: "not checked"', as
   await betRun($, 'npm test')
   await done($)
   await editCode($)
+  opts.files['a.ts'] = 'export const a = 2\n'
   await betRun($, 'npm test -- auth')
+  const reply = String((await done($)).result)
 
-  // the newest full run is older than the change: no proof either way (the part run is ✗ only before any full run)
-  expect(String((await done($)).result).split('\n').slice(0, 2)).toEqual(['? not checked', 'The full check was not run after the last change.'])
+  // the newest full run is older than the change: no proof either way, never "don't trust"
+  expect(reply.split('\n').slice(0, 2)).toEqual(['? not checked', 'The full check was run with extra options. Run it plain.'])
+  expect(reply).toContain('Run `npm test` exactly, by itself.')
   expect(seen).toMatchObject(quiet)
 })
 
@@ -194,21 +196,25 @@ test('two red results in a row: one toast, one sound, the pane opens once', asyn
   const first = String((await done($)).result)
   await done($)
 
-  expect(first.split('\n').slice(0, 3)).toEqual([RED, 'The AI switched off 1 check in tests/math.test.ts.', 'The AI did not say so.'])
+  expect(first.split('\n').slice(0, 3)).toEqual([RED, 'The AI changed 1 line in the check file tests/math.test.ts.', 'The AI did not say so.'])
   expect(seen).toMatchObject({ toasts: [RED], opens: 1, sounds: 1 })
   expect(status(seen)).toBe(`Lie Eater ${RED}`)
   const lines = await paneLines($)
-  expect(lines.slice(0, 3)).toEqual([RED, 'The AI switched off 1 check in tests/math.test.ts.', 'The AI did not say so.'])
+  expect(lines.slice(0, 3)).toEqual([RED, 'The AI changed 1 line in the check file tests/math.test.ts.', 'The AI did not say so.'])
   expect(has(lines, 'Details')).toBe(true)
-  expect(has(lines, 'tests/math.test.ts: new skip or only marks: 1')).toBe(true)
+  expect(has(lines, 'tests/math.test.ts: 1 line changed')).toBe(true)
+  // the lines that are gone show in the pane, and nowhere else
+  expect(lines).toEqual(expect.arrayContaining(['Gone from tests/math.test.ts:', "    it('adds', () => {"]))
+  expect(first).not.toContain("it('adds'")
 })
 
 test('a red result the AI named: "The AI said so itself"', async ($, on) => {
-  const seen = world(on, project())
+  const opts = project()
+  const seen = world(on, opts)
   on('tool.call', (_, e) => (e.tool === 'Bash' ? failing() : passing()))
 
   await start($)
-  await editCode($)
+  await editFile($, opts.files)
   await betRun($, 'npm test', 'fail')
   const reply = String((await done($, 'One test still fails: the parser does not read dates.')).result)
 
@@ -228,7 +234,7 @@ test('a reload does not take a new snapshot: a check removed before it is still 
   await start($)
   await betRun($, 'npm test')
 
-  expect(String((await done($)).result).split('\n')[1]).toBe('The AI removed 1 check from tests/math.test.ts.')
+  expect(String((await done($)).result).split('\n')[1]).toBe('The AI changed 4 lines in the check file tests/math.test.ts.')
 })
 
 test('the AI runs another test runner than the guessed one: "not checked", never "don\'t trust"', async ($, on) => {
@@ -246,12 +252,14 @@ test('the AI runs another test runner than the guessed one: "not checked", never
 })
 
 test('checks that already failed before any change: "not checked", never "don\'t trust"', async ($, on) => {
-  const seen = world(on, project())
+  const opts = project()
+  const seen = world(on, opts)
   on('tool.call', (_, e) => (e.tool === 'Bash' ? failing() : passing()))
 
   await start($)
   await betRun($, 'npm test', 'fail')
   await editCode($, 'src/feature.ts')
+  opts.files['a.ts'] = 'export const a = 2\n'
   await betRun($, 'npm test', 'fail')
   const reply = String((await done($)).result)
 
@@ -310,8 +318,8 @@ test('/check sends the AI to repair and run the full check, as the person, three
     {
       text: [
         'Lie Eater found this. Repair it, then run `npm test` by itself:',
-        '1. tests/math.test.ts: remove the new skip or only mark.',
-        'If a test is wrong, do not change it: tell the person why.',
+        '1. Put the check file tests/math.test.ts back as it was.',
+        'Existing check files are frozen. Put new checks in a new file. If an existing check must change, say why in `broken`: the person decides.',
         'Fix the code, not the tests.',
         'Then call the done tool.',
       ].join('\n'),
@@ -383,7 +391,7 @@ test('/check <command>: the person names the full check; what was there before s
   expect(seen.prompts.at(-1)?.text).toContain('then run `pnpm test` by itself')
   await betRun($, 'pnpm test')
 
-  expect(String((await done($)).result).split('\n').slice(0, 2)).toEqual([RED, 'The AI removed 1 check from tests/math.test.ts.'])
+  expect(String((await done($)).result).split('\n').slice(0, 2)).toEqual([RED, 'The AI changed 4 lines in the check file tests/math.test.ts.'])
 })
 
 test('/check <command> arms a project in which Lie Eater found no checks', async ($, on) => {
@@ -398,7 +406,7 @@ test('/check <command> arms a project in which Lie Eater found no checks', async
   expect(String((await done($)).result).split('\n')[0]).toBe('✓ checked')
 })
 
-test('/accept: the person accepts the change; the watch starts again from the files as they are', async ($, on) => {
+test('/accept: the files are frozen as they are, and "not checked" until a new full check passes', async ($, on) => {
   const opts = project()
   const seen = world(on, opts)
   on('tool.call', passing)
@@ -414,10 +422,14 @@ test('/accept: the person accepts the change; the watch starts again from the fi
   await ui.press({ key: 'accept' })
   await ui.unmount()
 
-  expect(status(seen)).toBe('Lie Eater · watching')
+  // the full run before the accepted change no longer stands
+  expect(status(seen)).toBe('Lie Eater ? not checked')
   expect((await run($, 'accept')).text).toBe('Nothing to accept.')
   await prompt($)
+  expect(String((await done($)).result).split('\n').slice(0, 2)).toEqual(['? not checked', 'The full check was not run after the last change.'])
+  await betRun($, 'npm test')
   expect(String((await done($)).result).split('\n')[0]).toBe('✓ checked')
+  expect(status(seen)).toBe('Lie Eater ✓ checked')
   // a red result after an accepted one is new: it is shown again
   opts.files['math.test.ts'] = GUTTED.replace("it('adds'", "it.skip('adds'")
   await done($)
@@ -436,7 +448,7 @@ test('/accept by command does the same as the button', async ($, on) => {
   await done($)
 
   expect((await run($, 'accept')).text).toBe('You accepted the change. Lie Eater watches from the files as they are now.')
-  expect(status(seen)).toBe('Lie Eater · watching')
+  expect(status(seen)).toBe('Lie Eater ? not checked')
 })
 
 test('/lie-eater opens the pane', async ($, on) => {

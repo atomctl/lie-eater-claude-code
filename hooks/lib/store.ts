@@ -10,7 +10,7 @@ import { projectRoot } from './project'
 import { nowOf } from './result'
 import type { Now } from './result'
 import { META_START, SHAPE } from './state'
-import { isTheVerdict } from './terms'
+import { hasChanged, isTheVerdict } from './terms'
 
 const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
 const watch = atom({ plugin: 'lie-eater', key: 'watch' } as const, null, { shape: SHAPE.watch })
@@ -68,7 +68,7 @@ export async function paneView($: EngineInterface): Promise<PaneView> {
   const last = w === null ? undefined : all.findLast(r => r.termsId === w.id)
 
   return {
-    now: nowOf({ armed: w !== null, changed: w !== null && w.lastCodeEdit > w.startRecord, ...(last === undefined ? {} : { last }) }),
+    now: nowOf({ armed: w !== null, changed: w !== null && hasChanged(w), ...(last === undefined ? {} : { last }) }),
     watch: w,
     last,
     records: await read($, records),

@@ -12,6 +12,7 @@ import {
   PANE,
   acceptCmd,
   armIfNone,
+  beforeRun,
   checkCmd,
   demoCmd,
   doneCall,
@@ -98,14 +99,16 @@ export const register: Register = on => {
       return { deny: refusal }
     }
 
+    // A run of the full check: the project's fingerprint and the shell's folder as the run starts.
+    const at = await beforeRun($, input)
     const ran = await next(e)
 
     if (ran.deny === undefined) {
       const made = await remember($, input, ran)
 
       if (made !== undefined) {
-        const line = await settle($, made, await onRecord($, made))
-        // A code change can make a green line "not checked".
+        const line = await settle($, made, await onRecord($, made, at))
+        // A change can make a green line "not checked".
         await refreshStatus($)
 
         if (line !== undefined) {

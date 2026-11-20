@@ -5,7 +5,7 @@
 // The engine wants each file that reads or writes state to declare its own
 // atoms (a reference with literal names). So the atoms are declared in each
 // file that uses them; this file holds what they must agree on.
-import type { Meta } from '../../types'
+import type { Frozen, Meta } from '../../types'
 
 export const META_START: Meta = {
   betSeq: 0,
@@ -16,10 +16,14 @@ export const META_START: Meta = {
   unbet: 0,
 }
 
+export const NOTHING_FROZEN: Frozen = { files: {}, unread: [] }
+
 export const SHAPE = {
   records: 'records-3',
-  watch: 'watch-3',
-  rulings: 'rulings-2',
+  watch: 'watch-5',
+  rulings: 'rulings-4',
+  frozen: 'frozen-2',
+  parked: 'parked-2',
   bets: 'bets-1',
   ledger: 'ledger-2',
   meta: 'meta-3',

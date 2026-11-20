@@ -11,6 +11,7 @@ import { inProject } from './project'
 import { CARD_SVG, RECEIPTS_JSON, RECEIPTS_MD, buildReceipt, receiptToMarkdown } from './receipts'
 import { nowOf } from './result'
 import { META_START, SHAPE } from './state'
+import { hasChanged } from './terms'
 
 // Each file that touches state declares its own atoms (see state.ts).
 const watch = atom({ plugin: 'lie-eater', key: 'watch' } as const, null, { shape: SHAPE.watch })
@@ -42,7 +43,7 @@ export async function refreshStatus($: EngineInterface): Promise<void> {
   const w = await read($, watch)
   const last = w === null ? undefined : (await read($, rulings)).findLast(r => r.termsId === w.id)
 
-  $.ui.status(nowOf({ armed: w !== null, changed: w !== null && w.lastCodeEdit > w.startRecord, ...(last === undefined ? {} : { last }) }).status)
+  $.ui.status(nowOf({ armed: w !== null, changed: w !== null && hasChanged(w), ...(last === undefined ? {} : { last }) }).status)
 }
 
 /** The start of a session: the ledger file is the truth for the bets. */
