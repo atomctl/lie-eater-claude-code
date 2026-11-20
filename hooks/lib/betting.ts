@@ -5,7 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Timer } from 'claude-code'
 
 import type { Bet, Terms, ToolRecord } from '../../types'
-import { betText, closeTurn, gateText, isGated, postBet, settleBet } from './bets'
+import { betText, callBet, closeTurn, gateText, isGated, postBet, settleBet, youWon } from './bets'
 import { debtNote, recordBet, refreshStatus } from './house'
 import { thump } from './referee'
 import { META_START, SHAPE } from './state'
@@ -140,8 +140,30 @@ export async function settle($: EngineInterface, r: ToolRecord, before: Terms | 
   await recordBet($, done)
   await refreshStatus($)
   if (done.state === 'lost') thump($)
+  // The person called this run too.
+  const called = youWon(done)
+  if (called !== undefined) $.ui.toast(called ? 'You called it right.' : 'You called it wrong.')
 
   return `Lie Eater: bet #${done.id} ${word}. You said ${betText(done)}. The run: ${done.line ?? ''}.`
+}
+
+/** Bet against your AI: the person's own call on the open bet (a button in the pane, or `/call`). */
+export async function callIt($: EngineInterface, call: string): Promise<string> {
+  const asked = call.trim()
+
+  if (asked !== 'pass' && asked !== 'fail') {
+    return (await openBet($)) === undefined ? 'No bet is open.' : 'Type /call pass or /call fail while a bet is open.'
+  }
+
+  let reply = ''
+  await update($, bets, list => {
+    const out = callBet(list, asked)
+    reply = out.reply
+
+    return out.bets
+  })
+
+  return reply
 }
 
 /** The end of a turn: a bet that no run settled is void. */

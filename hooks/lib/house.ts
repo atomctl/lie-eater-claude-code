@@ -5,7 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Bet, Ledger, RulingLine, Terms } from '../../types'
-import { score } from './bets'
+import { score, youWon } from './bets'
 import { flagOf, gitRemote, moodOf, refereeNumber, statusLine } from './flag'
 import {
   EMPTY_LEDGER,
@@ -150,7 +150,10 @@ export async function recordBet($: EngineInterface, b: Bet): Promise<void> {
   }
 
   const at = await today($)
-  await change($, l => addBet(l, { at, confidence: b.confidence, won: b.state === 'won' }))
+  const called = youWon(b)
+  await change($, l =>
+    addBet(l, { at, confidence: b.confidence, won: b.state === 'won', ...(called === undefined ? {} : { youWon: called }) }),
+  )
 }
 
 /**

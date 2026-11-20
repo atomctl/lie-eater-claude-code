@@ -1,7 +1,7 @@
 import type { Register } from 'claude-code'
 
 import { BET_DESCRIPTION, BET_SCHEMA, BET_TOOL, BET_TOOL_FULL, betText } from './lib/bets'
-import { closeBets, openBet, refuseRun, settle, takeBet } from './lib/betting'
+import { callIt, closeBets, openBet, refuseRun, settle, takeBet } from './lib/betting'
 import { betRows, canFix, diceFace, houseRows, recordHeader, recordRows, refereeRows, scoreLines } from './lib/face'
 import type { Tone } from './lib/face'
 import { loadLedger, overruleCmd, refreshStatus } from './lib/house'
@@ -14,6 +14,7 @@ const COMMANDS = [
   { name: 'fix', description: 'Lie Eater: send the AI back to repair the broken rules' },
   { name: 'explain', description: 'Lie Eater: the last ruling in three plain sentences' },
   { name: 'overrule', description: 'Lie Eater: overrule the last broken ruling; the debt is cleared' },
+  { name: 'call', description: 'Lie Eater: bet against your AI: /call pass or /call fail while its bet is open' },
   { name: 'lie-eater', description: 'Open the Lie Eater pane' },
 ] as const
 
@@ -53,6 +54,7 @@ export const register: Register = on => {
   on('command.run', { command: 'fix' }, async $ => ({ text: await fix($) }))
   on('command.run', { command: 'explain' }, async $ => ({ text: await explainCmd($) }))
   on('command.run', { command: 'overrule' }, async ($, e) => ({ text: await overruleCmd($, e.args) }))
+  on('command.run', { command: 'call' }, async ($, e) => ({ text: await callIt($, e.args) }))
   on('command.run', { command: 'lie-eater' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Lie Eater' })
 
@@ -145,6 +147,15 @@ export const register: Register = on => {
           <Box>
             <Button key="fix" label="Fix this" hotkey="f" onPress={() => fix($)} />
             <Text dimColor> or type /fix</Text>
+          </Box>
+        )}
+        {bets.some(b => b.state === 'open') && (
+          <Box>
+            <Text dimColor>Your call: </Text>
+            <Button key="call-pass" label="it will pass" hotkey="1" onPress={() => callIt($, 'pass')} />
+            <Text> </Text>
+            <Button key="call-fail" label="it will fail" hotkey="2" onPress={() => callIt($, 'fail')} />
+            <Text dimColor> or /call pass</Text>
           </Box>
         )}
         {[...scoreLines(bets, unbet), ...betRows(bets, columns), ...houseRows(ledger, columns)].map(row => (

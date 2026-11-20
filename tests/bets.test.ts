@@ -1,6 +1,18 @@
 import { expect, test } from 'claude-code/testing'
 
-import { BET_SCHEMA, GATE_TEXT, betText, closeTurn, gateText, isGated, postBet, score, settleBet } from '../hooks/lib/bets'
+import {
+  BET_SCHEMA,
+  GATE_TEXT,
+  betText,
+  callBet,
+  closeTurn,
+  gateText,
+  isGated,
+  postBet,
+  score,
+  settleBet,
+  youLine,
+} from '../hooks/lib/bets'
 import type { Bet } from '../types'
 import { rec } from './helpers'
 
@@ -123,4 +135,32 @@ test('the bet tool: three fields, two of them required; the refusal names the to
   expect(gateText('npm test')).toBe(
     `${GATE_TEXT} The test command of this game is \`npm test\`: run it as written (a pipe to tail is fine).`,
   )
+})
+
+// ---- bet against your AI ----
+
+test('callBet: the person calls the open bet, and may change the call until it settles', async () => {
+  expect(callBet([], 'pass')).toEqual({ bets: [], reply: 'No bet is open.' })
+  expect(callBet([open({ state: 'won' })], 'fail').reply).toBe('No bet is open.')
+
+  const called = callBet([open()], 'fail')
+  expect(called.bets[0]?.you).toBe('fail')
+  expect(called.reply).toBe('You called it: the next run will fail.')
+  expect(callBet(called.bets, 'pass').bets[0]?.you).toBe('pass')
+  // the call stays on the bet when it settles
+  expect(settleBet(called.bets[0] as Bet, testRun('failed'), true)).toMatchObject({ state: 'lost', you: 'fail' })
+})
+
+test('youLine: who called the runs better, the person or the AI', async () => {
+  const bets = [
+    open({ id: 1, state: 'won', expect: 'pass', you: 'pass' }), // it passed: both right
+    open({ id: 2, state: 'lost', expect: 'pass', you: 'fail' }), // it failed: the person right
+    open({ id: 3, state: 'won', expect: 'fail', you: 'pass' }), // it failed: the AI right
+    open({ id: 4, state: 'won', expect: 'pass' }), // no call
+    open({ id: 5, state: 'void', expect: 'pass', you: 'pass' }), // void: counts for nobody
+  ]
+
+  expect(youLine(bets)).toBe('You 2 of 3 · the AI 2 of 3')
+  expect(youLine([open({ state: 'won' })])).toBeUndefined()
+  expect(youLine([])).toBeUndefined()
 })

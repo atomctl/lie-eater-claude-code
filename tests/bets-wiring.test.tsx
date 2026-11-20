@@ -196,3 +196,56 @@ test('the dice turns in the spinner row only while a bet is open', async ($, on)
   await bash($, 'npm test')
   expect(await spinner()).toBe('Working')
 })
+
+// ---- bet against your AI ----
+
+test('while a bet is open the person may call it too; the pane keeps both scores', async ($, on) => {
+  const seen = world(on)
+  on('tool.call', failing)
+  const mount = () =>
+    $.ui.mount({
+      plugin: 'lie-eater',
+      component: 'Pane',
+      requestId: 'lie-eater',
+      surface: 'terminal',
+      props: { title: 'Lie Eater', isFocused: false, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 60 }, view: {} },
+    })
+
+  await run($, 'summon', 'npm test')
+  let ui = await mount()
+  expect(await ui.find({ key: 'call-pass' })).toBeUndefined()
+  await ui.unmount()
+
+  await bet($)
+  ui = await mount()
+  expect(await ui.find({ key: 'call-pass' })).toBeDefined()
+  await ui.press({ key: 'call-fail' })
+  await ui.unmount()
+  expect(has(await paneLines($), 'OPEN · you: it will fail')).toBe(true)
+
+  await bash($, 'npm test')
+  const lines = await paneLines($)
+  expect(seen.toasts.slice(-2)).toEqual(['BET LOST: the next run will pass, 90% sure', 'You called it right.'])
+  expect(has(lines, 'You 1 of 1 · the AI 0 of 1')).toBe(true)
+  ui = await mount()
+  expect(await ui.find({ key: 'call-pass' })).toBeUndefined()
+  await ui.unmount()
+
+  const ledger = JSON.parse(Object.entries(seen.written).find(([path]) => path.endsWith('.lie-eater/ledger.json'))?.[1] ?? '{}')
+  expect(ledger.bets[0]).toMatchObject({ won: false, youWon: true })
+})
+
+test('/call does the same as the buttons, and says so when no bet is open', async ($, on) => {
+  const seen = world(on)
+  on('tool.call', passing)
+
+  await run($, 'summon', 'npm test')
+  expect((await run($, 'call', 'pass')).text).toBe('No bet is open.')
+  await bet($)
+  expect((await run($, 'call', 'maybe')).text).toBe('Type /call pass or /call fail while a bet is open.')
+  expect((await run($, 'call', 'fail')).text).toBe('You called it: the next run will fail.')
+  await bash($, 'npm test')
+
+  expect(seen.toasts.at(-1)).toBe('You called it wrong.')
+  expect(has(await paneLines($), 'You 0 of 1 · the AI 1 of 1')).toBe(true)
+})

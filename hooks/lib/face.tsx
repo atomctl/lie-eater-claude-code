@@ -1,6 +1,6 @@
 // What the pane shows, as plain lines of text with a tone. register.tsx draws them.
 import type { Bet, Ledger, Ruling, Terms, ToolRecord } from '../../types'
-import { betText, score } from './bets'
+import { betText, score, youLine } from './bets'
 import { openDebt, repoLine, streak } from './ledger'
 import { isKept } from './terms'
 import { VOICE, rulingText, termsText } from './words'
@@ -80,7 +80,12 @@ export function betRows(bets: readonly Bet[], columns: number): Row[] {
     .reverse()
     .flatMap((b): Row[] => [
       { text: `#${b.id} ${betText(b)}`, tone: 'plain' },
-      { text: `    ${BET_WORD[b.state]}${b.line === undefined ? '' : ` · ${b.line}`}`, tone: BET_TONE[b.state] },
+      {
+        text: `    ${BET_WORD[b.state]}${b.line === undefined ? '' : ` · ${b.line}`}${
+          b.state === 'open' && b.you !== undefined ? ` · you: it will ${b.you}` : ''
+        }`,
+        tone: BET_TONE[b.state],
+      },
     ])
     .map(row => ({ ...row, text: row.text.slice(0, columns) }))
 }
@@ -108,6 +113,7 @@ export function scoreLines(bets: readonly Bet[], unbet: number): Row[] {
           },
         ]),
     { text: `${counts}${noBet}`, tone: 'quiet' },
+    ...(youLine(bets) === undefined ? [] : [{ text: youLine(bets) ?? '', tone: 'plain' as const }]),
   ]
 }
 

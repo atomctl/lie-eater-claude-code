@@ -53,12 +53,13 @@ export type Bet = {
   expect: 'pass' | 'fail'; confidence: number; why: string
   state: 'open' | 'won' | 'lost' | 'void'
   record?: number; line?: string
+  you?: 'pass' | 'fail'       // the person's own call on this run, if one was made
 }
 export type DebtEntry = {
   id: number; at: string; termsAt: number; verdict: string; failed: TermId[]; text: string   // termsAt: the game's Terms.at
   cleared?: { at: string; by: 'proof' | 'person' }
 }
-export type Ledger = { version: 1; bets: { at: string; confidence: number; won: boolean }[]; games: { at: string; termsAt: number; kept: boolean }[]; debt: DebtEntry[] }
+export type Ledger = { version: 1; bets: { at: string; confidence: number; won: boolean; youWon?: boolean }[]; games: { at: string; termsAt: number; kept: boolean }[]; debt: DebtEntry[] }
 export type Meta = { seq: number; betSeq: number; rulingSeq: number; termsSeq: number; turn: number; denies: number; unbet: number; promptNumbers: string[]; note?: string; referee?: number }
 
 declare module 'claude-code' {

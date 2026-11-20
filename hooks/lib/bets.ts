@@ -92,6 +92,40 @@ export function settleBet(b: Bet, r: ToolRecord, hadChange: boolean): Bet {
   return { ...b, state: passed === (b.expect === 'pass') ? 'won' : 'lost', record: r.id, line: evidenceLine(r) }
 }
 
+/** Bet against your AI: the person calls the open bet too. The call may change until the run settles it. */
+export function callBet(bets: readonly Bet[], call: 'pass' | 'fail'): { bets: Bet[]; reply: string } {
+  if (!bets.some(b => b.state === 'open')) {
+    return { bets: [...bets], reply: 'No bet is open.' }
+  }
+
+  return {
+    bets: bets.map(b => (b.state === 'open' ? { ...b, you: call } : b)),
+    reply: `You called it: the next run will ${call}.`,
+  }
+}
+
+// Did the run pass? A won bet on "pass" and a lost bet on "fail" both mean it did.
+const ranClean = (b: Bet): boolean => (b.state === 'won') === (b.expect === 'pass')
+
+/** Was the person's call right? Undefined when there was no call or the bet did not settle. */
+export function youWon(b: Bet): boolean | undefined {
+  return b.you === undefined || (b.state !== 'won' && b.state !== 'lost') ? undefined : (b.you === 'pass') === ranClean(b)
+}
+
+/** `You 3 of 5 · the AI 4 of 5`, over the runs the person called. */
+export function youLine(bets: readonly Bet[]): string | undefined {
+  const called = bets.filter(b => youWon(b) !== undefined)
+
+  if (called.length === 0) {
+    return undefined
+  }
+
+  const you = called.filter(b => youWon(b) === true).length
+  const ai = called.filter(b => b.state === 'won').length
+
+  return `You ${you} of ${called.length} · the AI ${ai} of ${called.length}`
+}
+
 /** A bet that no run settled by the end of the turn is void. */
 export function closeTurn(bets: readonly Bet[]): Bet[] {
   return bets.map(b => (b.state === 'open' ? { ...b, state: 'void', line: 'no run settled it' } : b))
