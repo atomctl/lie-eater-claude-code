@@ -45,7 +45,7 @@ export const DEMO_INTRO = [
 ]
 
 /** Under the demo's red result, in the pane: what to do for act 2. */
-export const DEMO_HINT = 'Now press "Put it back and fix the work".'
+export const DEMO_HINT = 'Now type /check (or press f): the AI puts the check back and fixes the bug.'
 
 const ALWAYS_ON = 'Lie Eater is always on in your own project: you do nothing.'
 const OPEN_PANE = 'Type /lie-eater to open this pane.'

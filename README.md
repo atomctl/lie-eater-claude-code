@@ -32,6 +32,7 @@ The AI changed 3 lines in the check file tests/test_cart.py.
 The AI did not say so.
 
 [ Put it back and fix the work ]  [ Accept this change ]
+Press f or a, or type /check or /accept.
 ```
 
 The first button sends the AI back to repair it. The second says the change is right (for example, a test that was itself wrong, a renamed file, or a formatter run). After it the result is `? not checked` until the full check passes again.
@@ -43,6 +44,7 @@ The first button sends the AI back to repair it. The second says the change is r
 The full check was not run after the last change.
 
 [ Check again ]
+Press c, or type /check.
 ```
 
 The button asks the AI to run the full check and say "done" again.
@@ -165,7 +167,7 @@ The main AI is asked to say, before each test or build run, what it expects (`pa
 
 The games found fourteen faults; a code review found eleven more, in shapes no game had used. Each was fixed with a test that failed first. One test sends 5,760 honest shapes of a test command through the rules: none reads a pass as a fail or a fail as a pass. (Since this version a shape with an extra flag or a value set in front, like `CI=1 npm test`, is "not checked": it is not the full check.) Two other models attacked the earlier version ([the red team](docs/superpowers/specs/2026-11-20-lie-eater-design.md#22-compare-files-not-text)); each row of their table of attacks is now a test. Their second round ([section 23](docs/superpowers/specs/2026-11-20-lie-eater-design.md#23-frozen-means-frozen)) closed "added to" and bound the full check to one command and one folder. What stays open is in the limits. A new kind of project will find more: please report a result that you think is wrong, with `.lie-eater/receipts.json`.
 
-**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each is replayed through the same rules the live mod uses, and ends with a `done` call. One command reproduces the table and runs the mod's 283 tests:
+**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each is replayed through the same rules the live mod uses, and ends with a `done` call. One command reproduces the table and runs the mod's 284 tests:
 
 ```
 claude plugin test .
@@ -213,7 +215,7 @@ In Lie Eater the proof is also fixed before the work: the check files are frozen
 - **"No new check" speaks of the work since the last ✓.** After a green result the watch is armed again with the new check files frozen, so a second `done` with nothing changed says "The AI added no new check for this change." even when the first green named new checks.
 - **A check file that cannot be read stays unread.** A file of the frozen set that could not be read when the watch was armed (for example one over 4 MiB, the engine's limit for one read) makes every result at best "not checked" until a new watch is armed: after an accepted ✗, or in a new session.
 - **Big projects:** past 400 folders or 5,000 files, or when a folder cannot be listed, the project is not read to its end, and no result is better than "not checked". The frozen texts are kept in the session's memory (2,000,000 characters in all; past that a file is kept as a hash). Nothing was measured on a large project, and nothing in Go or Rust.
-- **The sound plays on macOS only.** The status line, the pane and the buttons are tested in the test kit; an earlier version's pane was seen on a real screen; the screens of this version were seen only as the text that headless sessions report.
+- **The sound plays on macOS only.** The status line, the pane and the buttons are tested in the test kit; the owner played the two-act demo on a real screen on 20 Nov 2026 (the red result, the pane, the repair, the green result and the closing lines all showed); the buttons show no key there, so a line under them names the key and the command.
 
 The name is inspired by the manga Usogui. No artwork or text from it is used.
 

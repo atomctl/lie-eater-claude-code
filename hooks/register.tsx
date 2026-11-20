@@ -153,9 +153,11 @@ export const register: Register = on => {
             <Button key="accept" label="Accept this change" hotkey="a" onPress={() => acceptCmd($)} />
           </Box>
         )}
-        {view.now.action === 'repair' && view.watch?.demo === true && <Text dimColor>{DEMO_HINT}</Text>}
+        {/* The engine draws no key on a button: the line under it says how to use it. */}
+        {view.now.action === 'repair' && <Text dimColor>{view.watch?.demo === true ? DEMO_HINT : 'Press f or a, or type /check or /accept.'}</Text>}
         {view.now.action === 'check' && <Button key="check" label="Check again" hotkey="c" onPress={() => checkCmd($, '')} />}
         {view.now.action === 'add' && <Button key="add" label="Add checks" hotkey="c" onPress={() => checkCmd($, '')} />}
+        {(view.now.action === 'check' || view.now.action === 'add') && <Text dimColor>Press c, or type /check.</Text>}
         <Text dimColor> </Text>
         <Text dimColor bold>
           Details

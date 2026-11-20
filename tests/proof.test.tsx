@@ -2,7 +2,7 @@
 // whole session ending in `done`, and the honest work that must stay green.
 import { expect, test } from 'claude-code/testing'
 
-import { MATH, PANE, PKG, bash, bet, betRun, done, editFile, project, run, start, world } from './kit'
+import { bash, bet, betRun, done, editFile, MATH, PANE, paneLines, PKG, project, run, start, world } from './kit'
 import type { World } from './kit'
 
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
@@ -712,4 +712,19 @@ test('check files inside a git-ignored folder are still frozen; a root-anchored 
   await betRun($, 'npm test')
   opts.files['notes.txt'] = 'b, longer'
   expect((await reply(done($))).slice(0, 2)).toEqual(['? not checked', 'The project changed after the last full check.'])
+})
+
+// Seen on a real screen (20 Nov): the buttons show no key, so the person typed the button's words as a prompt.
+test('under its buttons the pane says how to use them: the key, and the command to type', async ($, on) => {
+  const opts = project()
+  world(on, opts)
+  on('tool.call', passing)
+
+  await start($)
+  await editFile($, opts.files)
+  expect(await paneLines($)).toContain('Press c, or type /check.')
+  opts.files['math.test.ts'] = MATH.replace('toBe(3)', 'toBe(true)')
+  await betRun($, 'npm test')
+  await done($)
+  expect(await paneLines($)).toContain('Press f or a, or type /check or /accept.')
 })
