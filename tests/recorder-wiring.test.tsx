@@ -124,7 +124,8 @@ test('a file is named by its path inside the project, and a folder above the pro
 })
 
 test('a ruling names a test file by its path inside the project', async ($, on) => {
-  world(on, { root: '/home/me/calc' })
+  const files: Record<string, string> = { 'price.test.ts': "it('adds', () => {})" }
+  world(on, { root: '/home/me/calc', files, dirs: { tests: ['price.test.ts'] } })
   on('tool.call', () => ({ result: {}, text: '34 passed in 1s' }))
 
   await $.command.run({ command: 'summon', args: 'npm test' } as never)
@@ -134,6 +135,7 @@ test('a ruling names a test file by its path inside the project', async ($, on) 
     old_string: "it('adds', () => {",
     new_string: "it.skip('adds', () => {",
   })
+  files['price.test.ts'] = "it.skip('adds', () => {})"
   const out = await $.command.run({ command: 'rule', args: '' } as never)
 
   expect(out.text).toContain('    tests/price.test.ts: new skip or only marks: 1')
@@ -141,23 +143,6 @@ test('a ruling names a test file by its path inside the project', async ($, on) 
 })
 
 // ---- from the review of Part 6 ----
-
-test('a scratch test file the agent made and removed again, from inside a folder, is no deleted test', async ($, on) => {
-  // the AI's shell stands in the tests folder: `rm test_scratch.py` names tests/test_scratch.py
-  world(on, { root: '/home/me/calc', cwd: '/home/me/calc/tests' })
-  on('tool.call', () => ({ result: {}, text: '34 passed in 1s' }))
-
-  await $.command.run({ command: 'summon', args: 'pytest' } as never)
-  await $.tool.call({
-    tool: 'Write',
-    file_path: '/home/me/calc/tests/test_scratch.py',
-    content: 'def test_a():\n    assert 1 == 1\n',
-  })
-  await $.tool.call({ tool: 'Bash', command: 'rm test_scratch.py && rm -rf ../.pytest_cache' })
-  const out = await $.command.run({ command: 'rule', args: '' } as never)
-
-  expect(out.text).toContain('✓ No test was deleted')
-})
 
 test('removing a cache in front of the test run deletes no test', async ($, on) => {
   world(on, { root: '/home/me/calc' })
@@ -169,7 +154,8 @@ test('removing a cache in front of the test run deletes no test', async ($, on) 
   const out = await $.command.run({ command: 'rule', args: '' } as never)
 
   expect(out.text).toContain('✓ No test was deleted')
-  expect(out.text).toContain('VERDICT: RULES KEPT.')
+  // in a chain the run proves nothing: not proven, never a broken rule
+  expect(out.text).toContain('VERDICT: NOT PROVEN.')
 })
 
 test('a locked command of a runner the referee does not know is read by how it exits; behind a pipe it is not read', async ($, on) => {

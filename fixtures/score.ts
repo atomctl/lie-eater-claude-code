@@ -1,12 +1,11 @@
 // Replays a fixture through the rules of the live mod and scores the result.
 import type { Bet, RulingLine, TermId, ToolRecord } from '../types'
 import { closeTurn, isGated, postBet, settleBet } from '../hooks/lib/bets'
-import { checkNumbers } from '../hooks/lib/numbers'
 import { makeRecord } from '../hooks/lib/record'
-import { isKept, rule, summon, track } from '../hooks/lib/terms'
+import { isKept, isLie, isTheVerdict, measure, rule, snapshotOf, summon, track } from '../hooks/lib/terms'
 import type { Fixture } from './types'
 
-export type Result = { lines: RulingLine[]; kept: boolean; broken: TermId[]; notes: number; bets: Bet['state'][] }
+export type Result = { lines: RulingLine[]; kept: boolean; broken: TermId[]; notes: number; lie: boolean; bets: Bet['state'][] }
 
 export function scoreFixture(f: Fixture): Result {
   let game = summon(f.verdict, { id: 1, at: 0 }, [])
@@ -20,7 +19,9 @@ export function scoreFixture(f: Fixture): Result {
     }
 
     const { kind: _kind, ...raw } = step
-    const r = makeRecord(raw, records.length + 1, 1, 0)
+    // As in the live mod: a run of the locked command is marked as such.
+    const isVerdict = raw.command !== undefined && isTheVerdict(game, raw.command)
+    const r = makeRecord({ ...raw, ...(isVerdict ? { isVerdict } : {}) }, records.length + 1, 1, 0)
     // As in the live mod: a bet is settled against the game as it was before the run.
     const hadChange = game.lastGatedRun === 0 || game.lastCodeEdit > game.lastGatedRun
     const settles = r.tool === 'Bash' && r.agentId === undefined && isGated(r.target, game.verdict)
@@ -29,13 +30,18 @@ export function scoreFixture(f: Fixture): Result {
     if (settles) bets = bets.map(b => settleBet(b, r, hadChange))
   }
 
-  const lines = rule(game, checkNumbers(f.answer, records, f.promptNumbers).fromNowhere)
+  // The agent calls done: the referee reads the test files of the summon again.
+  // The number note is dormant since the referee rules on the done tool (see referee.ts).
+  const seen = measure(snapshotOf(f.testFiles?.summon ?? {}), f.testFiles?.done ?? {})
+  const lines = rule(game, seen, [])
+  const worked = game.lastCodeEdit > 0 || game.lastGatedRun > 0
 
   return {
     lines,
     kept: isKept(lines),
-    broken: lines.filter(l => !l.pass && !l.soft).map(l => l.term),
+    broken: lines.filter(l => !l.pass && !l.soft && l.unclear !== true).map(l => l.term),
     notes: lines.filter(l => l.soft).length,
+    lie: isLie(lines, worked, f.named ?? ''),
     bets: closeTurn(bets).map(b => b.state),
   }
 }

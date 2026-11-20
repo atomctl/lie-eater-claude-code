@@ -5,8 +5,7 @@ import { callIt, closeBets, openBet, refuseRun, settle, takeBet } from './lib/be
 import { betRows, canFix, diceFace, houseRows, recordHeader, recordRows, refereeRows, scoreLines } from './lib/face'
 import type { Tone } from './lib/face'
 import { loadLedger, overruleCmd, refreshStatus } from './lib/house'
-import { shellFolder } from './lib/project'
-import { PANE, explainCmd, fix, onRecord, ruleNow, ruleTurn, summonCmd } from './lib/referee'
+import { DONE_DESCRIPTION, DONE_SCHEMA, DONE_TOOL, DONE_TOOL_FULL, PANE, doneCall, explainCmd, fix, onRecord, ruleNow, summonCmd } from './lib/referee'
 import { paneView, remember, startTurn } from './lib/store'
 
 const COMMANDS = [
@@ -34,12 +33,18 @@ export const register: Register = on => {
     }
 
     // A mod cannot add to the system prompt, and a tool registered later is not
-    // proven to reach the agent: the bet tool is always there, and says so when
+    // proven to reach the agent: the two tools are always there, and say so when
     // no referee is present.
     await $.tool.register({
       name: BET_TOOL,
       description: BET_DESCRIPTION,
       inputSchema: BET_SCHEMA,
+      isDeferred: false,
+    })
+    await $.tool.register({
+      name: DONE_TOOL,
+      description: DONE_DESCRIPTION,
+      inputSchema: DONE_SCHEMA,
       isDeferred: false,
     })
 
@@ -63,9 +68,7 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    const origin = e.origin as { kind?: string; name?: string } | undefined
-    const isOwn = origin?.kind === 'plugin' && origin.name === $.plugin.name
-    await startTurn($, e.text, isOwn)
+    await startTurn($)
 
     return next(e)
   })
@@ -78,6 +81,10 @@ export const register: Register = on => {
     if (input.tool === BET_TOOL_FULL) {
       return { result: await takeBet($, input) }
     }
+    // The AI says the task is finished: the one moment the referee rules by itself.
+    if (input.tool === DONE_TOOL_FULL) {
+      return { result: await doneCall($, input) }
+    }
 
     // The one thing the mod ever refuses: a test or build run with no bet,
     // while a referee is present.
@@ -87,12 +94,10 @@ export const register: Register = on => {
       return { deny: refusal }
     }
 
-    // Where the shell stands now: an `rm` in this call names its files from there.
-    const stood = input.tool === 'Bash' ? await shellFolder($) : ''
     const ran = await next(e)
 
     if (ran.deny === undefined) {
-      const made = await remember($, input, ran, stood)
+      const made = await remember($, input, ran)
 
       if (made !== undefined) {
         const line = await settle($, made, await onRecord($, made))
@@ -108,16 +113,12 @@ export const register: Register = on => {
     return ran
   }).catch(($, e, next) => next(e))
 
-  // The ruling comes after the turn and never delays the answer.
+  // The end of a turn rules nothing (the done tool does): it only closes the bets.
   on('turn.complete', async ($, e, next) => {
     const out = await next(e)
 
     if (e.agentId === undefined) {
       await closeBets($)
-
-      if (e.reason === 'answer') {
-        void ruleTurn($, e.answer).catch(() => undefined)
-      }
     }
 
     return out
@@ -137,12 +138,11 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const columns = e.props.bodyColumns
-    const { game, ruling, list, bets, unbet, ledger, referee, note } = await paneView($)
+    const { game, ruling, list, bets, unbet, ledger, referee } = await paneView($)
     const room = game === null ? Math.max(1, (e.viewport?.rows ?? 24) - 4) : 5
 
     return (
       <Box flexDirection="column">
-        {note !== undefined && <Text dimColor>{note.slice(0, columns)}</Text>}
         {refereeRows(game, ruling, columns, referee).map(row => (
           <Text {...TONE[row.tone]}>{row.text}</Text>
         ))}

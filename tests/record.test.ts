@@ -7,10 +7,12 @@ import {
   isCodeFile,
   isShellEdit,
   isTestFile,
+  checkLines,
+  fileCounts,
   makeRecord,
-  measureTestEdit,
   parseCounts,
 } from '../hooks/lib/record'
+import { isAlone } from '../hooks/lib/commands'
 import { rec } from './helpers'
 
 test('classifyCommand names the kind; test wins over build in a chain', async () => {
@@ -85,27 +87,22 @@ test('isCodeFile: a document is not code', async () => {
   expect(isCodeFile('docs/guide.rst')).toBe(false)
 })
 
-test('measureTestEdit counts checks, tests, skip marks and tables in old and new text', async () => {
-  expect(measureTestEdit('assert total == 34\nassert name == "a"', 'assert name == "a"')).toMatchObject({
-    asserts: [2, 1],
-    lines: ['assert total == 34'],
-  })
-  expect(measureTestEdit('def test_a():\n  ...\ndef test_b():\n  ...', 'def test_a():\n  ...')).toMatchObject({
-    tests: [2, 1],
-  })
-  expect(measureTestEdit('it("logs in", () => {', 'it.skip("logs in", () => {')).toMatchObject({
-    skips: [0, 1],
-  })
-  expect(measureTestEdit('expect(total).toBe(34)', 'expect(total).toBe(31)')).toMatchObject({
-    asserts: [1, 1],
-    lines: ['expect(total).toBe(34)'],
-  })
-  expect(measureTestEdit('it("a", () => {', 'it.only("a", () => {')).toMatchObject({ skips: [0, 1] })
+test('fileCounts counts checks, tests, skip marks and tables; checkLines lists the checks', async () => {
+  expect(fileCounts('assert total == 34\nassert name == "a"')).toMatchObject({ asserts: 2 })
+  expect(checkLines('def test_a():\n    assert total == 34\n    x = 1\n    assert name == "a"')).toEqual([
+    'assert total == 34',
+    'assert name == "a"',
+  ])
+  expect(fileCounts('def test_a():\n  ...\ndef test_b():\n  ...')).toMatchObject({ tests: 2 })
+  expect(fileCounts('it("logs in", () => {')).toMatchObject({ tests: 1, skips: 0 })
+  expect(fileCounts('it.skip("logs in", () => {')).toMatchObject({ skips: 1 })
+  expect(fileCounts('it.only("a", () => {')).toMatchObject({ skips: 1 })
 
   const ten = Array.from({ length: 10 }, (_, i) => `expect(f(${i})).toBe(${i})`).join('\n')
-  const table = 'test.each(cases)("f", (i, o) => { expect(f(i)).toBe(o) })'
-  expect(measureTestEdit(ten, table)).toMatchObject({ asserts: [10, 1], tables: [0, 1] })
-  expect(measureTestEdit(ten, table).lines).toHaveLength(3)
+  expect(fileCounts(ten)).toMatchObject({ asserts: 10, tables: 0 })
+  expect(fileCounts('test.each(cases)("f", (i, o) => { expect(f(i)).toBe(o) })')).toMatchObject({ asserts: 1, tables: 1 })
+  // a long check line is cut, so the repair order stays readable
+  expect(checkLines(`expect(x).toBe('${'y'.repeat(200)}')`)[0]).toHaveLength(120)
 })
 
 test('extractNumbers finds number tokens and drops thousands commas', async () => {
@@ -150,15 +147,10 @@ test('makeRecord reads how a call ended', async () => {
   expect(made({ tool: 'Bash', command: 'npm test', agentId: 'a1', text: '34 passed' }).agentId).toBe('a1')
 })
 
-test('makeRecord measures an edit of a test file, and only of a test file', async () => {
+test('makeRecord names an edit, a write and another tool by their file', async () => {
   const made = (raw: Parameters<typeof makeRecord>[0]) => makeRecord(raw, 1, 1, 0)
 
-  expect(made({ tool: 'Edit', path: 'tests/test_a.py', oldText: 'assert x == 1', newText: '' })).toMatchObject({
-    kind: 'edit',
-    target: 'tests/test_a.py',
-    testEdit: { asserts: [1, 0] },
-  })
-  expect(made({ tool: 'Edit', path: 'src/a.py', oldText: 'a', newText: 'b' }).testEdit).toBeUndefined()
+  expect(made({ tool: 'Edit', path: 'tests/test_a.py', newText: '' })).toMatchObject({ kind: 'edit', target: 'tests/test_a.py' })
   expect(made({ tool: 'Write', path: 'README.md', newText: '# hi' }).kind).toBe('write')
   expect(made({ tool: 'Read', path: 'src/a.py', text: 'x = 0.8612' })).toMatchObject({
     kind: 'tool',
@@ -231,22 +223,18 @@ test('isTestFile knows .mjs, .cjs and .mts test files', async () => {
   }
 })
 
-test('measureTestEdit: a regex .test( and a model.fit( are not tests or focus marks', async () => {
-  expect(measureTestEdit('', 'if (/x/.test(name)) { model.fit(X, y) }')).toMatchObject({ tests: [0, 0], skips: [0, 0] })
-  expect(measureTestEdit('it("a", () => {})', 'fit("a", () => {})')).toMatchObject({ tests: [1, 1], skips: [0, 1] })
+test('fileCounts: a regex .test( and a model.fit( are not tests or focus marks', async () => {
+  expect(fileCounts('if (/x/.test(name)) { model.fit(X, y) }')).toMatchObject({ tests: 0, skips: 0 })
+  expect(fileCounts('fit("a", () => {})')).toMatchObject({ tests: 1, skips: 1 })
 })
 
-test('measureTestEdit: a test that is commented out is gone', async () => {
-  const old = 'it("a", () => {\n  expect(a).toBe(1)\n})'
-  const commented = '// it("a", () => {\n//   expect(a).toBe(1)\n// })'
-
-  expect(measureTestEdit(old, commented)).toMatchObject({ asserts: [1, 0], tests: [1, 0] })
-  expect(measureTestEdit('def test_a():\n    assert a == 1', '# def test_a():\n#     assert a == 1')).toMatchObject({
-    asserts: [1, 0],
-    tests: [1, 0],
-  })
+test('fileCounts: a test that is commented out is gone', async () => {
+  expect(fileCounts('it("a", () => {\n  expect(a).toBe(1)\n})')).toMatchObject({ asserts: 1, tests: 1 })
+  expect(fileCounts('// it("a", () => {\n//   expect(a).toBe(1)\n// })')).toMatchObject({ asserts: 0, tests: 0 })
+  expect(fileCounts('# def test_a():\n#     assert a == 1')).toMatchObject({ asserts: 0, tests: 0 })
+  expect(checkLines('# assert a == 1')).toEqual([])
   // a Rust attribute starts with # and is not a comment
-  expect(measureTestEdit('', '#[test]\nfn adds() { assert_eq!(1, 1); }')).toMatchObject({ tests: [0, 1], asserts: [0, 1] })
+  expect(fileCounts('#[test]\nfn adds() { assert_eq!(1, 1); }')).toMatchObject({ tests: 1, asserts: 1 })
 })
 
 test('isShellEdit: a shell command that changes files', async () => {
@@ -320,12 +308,10 @@ test('a test run that ran no test has no clear result', async () => {
   expect(makeRecord({ tool: 'Bash', command: 'npm test', text: 'Tests: 0 passed, 0 total' }, 1, 1, 0).state).toBe('unknown')
 })
 
-test('measureTestEdit: a conditional skip and a todo are not "switched off"', async () => {
-  expect(measureTestEdit('', '@pytest.mark.skipif(sys.platform == "win32")\ndef test_a():\n    assert a')).toMatchObject({
-    skips: [0, 0],
-  })
-  expect(measureTestEdit('', "it.todo('handles unicode')")).toMatchObject({ skips: [0, 0] })
-  expect(measureTestEdit('', '@pytest.mark.skip\ndef test_a():\n    assert a')).toMatchObject({ skips: [0, 1] })
+test('fileCounts: a conditional skip and a todo are not "switched off"', async () => {
+  expect(fileCounts('@pytest.mark.skipif(sys.platform == "win32")\ndef test_a():\n    assert a')).toMatchObject({ skips: 0 })
+  expect(fileCounts("it.todo('handles unicode')")).toMatchObject({ skips: 0 })
+  expect(fileCounts('@pytest.mark.skip\ndef test_a():\n    assert a')).toMatchObject({ skips: 1 })
 })
 
 // ---- from the first soak game ----
@@ -686,38 +672,6 @@ test('the command the person locked is a test run, whatever its runner; behind a
   expect(makeRecord({ tool: 'Bash', command: 'make ci', text: '' }, 1, 1, 0).kind).toBe('other')
 })
 
-test('an rm names its files from where the shell stands, by their paths inside the project', async () => {
-  const removed = (command: string, root = '/proj', stood = '') =>
-    makeRecord({ tool: 'Bash', command, text: '', root, ...(stood === '' ? {} : { stood }) }, 1, 1, 0).removed ?? []
-
-  expect(removed('rm /proj/tests/test_scratch.py')).toEqual(['tests/test_scratch.py'])
-  expect(removed('cd tests && rm test_scratch.py')).toEqual(['tests/test_scratch.py'])
-  expect(removed('cd /proj/tests && rm ../tests/./test_scratch.py')).toEqual(['tests/test_scratch.py'])
-  expect(removed('rm test_scratch.py', '/proj', '/proj/tests')).toEqual(['tests/test_scratch.py'])
-  expect(removed('rm "/my proj/tests/test_a.py"', '/my proj')).toEqual(['tests/test_a.py'])
-  expect(removed('rm -rf ./tests/')).toEqual(['tests'])
-  expect(removed('sudo rm -f tests/a.test.ts tests/b.test.ts')).toEqual(['tests/a.test.ts', 'tests/b.test.ts'])
-  expect(removed('git rm -q tests/a.test.ts')).toEqual(['tests/a.test.ts'])
-  // outside the project, or in a place the referee cannot know: not the project's tests
-  for (const command of ['rm -rf /tmp/test', 'rm -rf "$TMPDIR/tests"', 'rm -rf ~/scratch/tests', 'cd /tmp && rm -rf tests']) {
-    expect(`${command} ${JSON.stringify(removed(command))}`).toBe(`${command} []`)
-  }
-  expect(removed('rm -rf test', '/proj', '/tmp')).toEqual([])
-  // only the words of an `rm` count: not the `test` of `npm test`, not a comment
-  for (const command of [
-    'rm -rf node_modules/.cache && npm test',
-    'rm -f cover.out && go test ./...',
-    'rm -rf dist; yarn test',
-    'npm test && rm -rf dist',
-    'rm -rf dist # not the tests',
-    'echo "rm tests/a.test.ts"',
-  ]) {
-    expect(`${command} ${JSON.stringify(removed(command))}`).toBe(`${command} []`)
-  }
-  // with no root in sight a path stays as it was typed
-  expect(removed('rm tests/a.test.ts', '')).toEqual(['tests/a.test.ts'])
-})
-
 test('sourcing an environment file in front of the run is setup, not code that could print a summary', async () => {
   const made = (command: string, text: string) => makeRecord({ tool: 'Bash', command, text }, 1, 1, 0).state
 
@@ -728,4 +682,55 @@ test('sourcing an environment file in front of the run is setup, not code that c
   // any other file that is sourced is code: with the exit code hidden its output could be anything
   expect(made('source ./fake.sh && pytest -q | tail -5', '5 passed in 0.10s')).toBe('unknown')
   expect(made('. ./fake.sh && pytest -q | tail -5', '5 passed in 0.10s')).toBe('unknown')
+})
+
+// ---- the done tool: only a run by itself proves rule 1 ----
+
+test('a command by itself: one command, with no pipe, chain, second line, group or background', async () => {
+  for (const command of [
+    'npm test',
+    'CI=1 npm test',
+    'npx vitest run',
+    '.venv/bin/pytest -q',
+    'uv run pytest',
+    'timeout 600 npm test',
+    'npm test 2>&1',
+    'npm test > out.txt 2>&1',
+    'npm test &> out.txt',
+    'pytest -k "a | b; c"',
+    'pytest -q  # all tests',
+  ]) {
+    expect(`${command} ${isAlone(command)}`).toBe(`${command} true`)
+  }
+  for (const command of [
+    'npm test | tail -5',
+    'cd api && npm test',
+    'npm test; echo $?',
+    'npm test || true',
+    'npm test && git status',
+    'cd api\nnpm test',
+    '(npm test)',
+    '{ npm test; }',
+    'npm test &',
+    'npm test |& tail',
+  ]) {
+    expect(`${command} ${isAlone(command)}`).toBe(`${command} false`)
+  }
+})
+
+test('a run of the locked command by itself is judged by its exit status alone', async () => {
+  const locked = (command: string, text: string, more: Record<string, unknown> = {}) =>
+    makeRecord({ tool: 'Bash', command, text, isVerdict: true, ...more }, 1, 1, 0)
+
+  // the counts are proof text only: the exit status decides
+  expect(locked('pytest', '3 failed, 31 passed in 2.10s')).toMatchObject({ state: 'clean', counts: { failed: 3 } })
+  expect(locked('pytest', 'Exit code 1\n34 passed in 1s', { isError: true }).state).toBe('failed')
+  expect(locked('npm test > out.txt', '')).toMatchObject({ state: 'clean' })
+  // the guards stay: a run that ran no test, or that did not end in sight, proves nothing
+  expect(locked('pytest', 'no tests ran in 0.01s\n0 passed in 0.01s').state).toBe('unknown')
+  expect(locked('pytest', '', { isBackground: true }).state).toBe('unknown')
+  expect(locked('pytest', '', { isInterrupted: true, isError: true }).state).toBe('unknown')
+  // not by itself, or not the locked command: read as before
+  expect(locked('pytest | tail -3', '3 failed, 31 passed in 2.10s').state).toBe('failed')
+  expect(makeRecord({ tool: 'Bash', command: 'pytest', text: '3 failed, 31 passed in 2.10s' }, 1, 1, 0).state).toBe('failed')
 })

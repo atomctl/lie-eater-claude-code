@@ -71,23 +71,12 @@ export const chain = (command: string): string[] =>
     .filter(part => part !== '')
 
 /**
- * The commands of a chain as their words, each quoted word with its own text:
- * `cd "my app" && rm tests/a.py` is [[cd, my app], [rm, tests/a.py]].
+ * One command by itself: no pipe, no `;`, `&&` or `||`, no second line, no
+ * group or subshell, not sent to the background. Its exit code is its own.
+ * Where its output goes (`2>&1`, `> out.txt`) does not matter.
  */
-export function words(command: string): string[][] {
-  const kept: string[] = []
-  const text = flat(command, quoted => `\u0001${kept.push(quoted.slice(1, -1)) - 1}\u0001`)
-
-  return text
-    .split(/&&|\|\||\|&?|;/)
-    .map(step =>
-      alone(step)
-        .split(' ')
-        .filter(word => word !== '')
-        .map(word => word.replace(/\u0001(\d+)\u0001/g, (_, i: string) => kept[Number(i)] ?? '')),
-    )
-    .filter(step => step.length > 0)
-}
+export const isAlone = (command: string): boolean =>
+  chain(command).length === 1 && !/[(){}]|(?<![>&])&(?![>&])/.test(unquoted(command))
 
 // The commands of a chain, each without what stands in front of it.
 const steps = (command: string): string[] => chain(command).map(part => part.replace(WRAPPERS, ''))

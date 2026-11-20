@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
-import { BET_SCHEMA, gateText } from '../hooks/lib/bets'
+import { BET_DESCRIPTION, BET_SCHEMA, gateText } from '../hooks/lib/bets'
+import { DONE_SCHEMA } from '../hooks/lib/referee'
 import { bash, bet, betRun, endTurn, paneLines, run, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' })
@@ -9,13 +10,22 @@ const has = (lines: string[], text: string) => lines.some(l => l.includes(text))
 const edit = ($: Parameters<typeof bash>[0]) =>
   $.tool.call({ tool: 'Edit', file_path: 'src/a.ts', old_string: 'a', new_string: 'b' })
 
-test('the bet tool is registered when the session starts', async ($, on) => {
+test('the bet tool and the done tool are registered when the session starts', async ($, on) => {
   const seen = world(on)
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-  expect(seen.tools).toHaveLength(1)
+  expect(seen.tools).toHaveLength(2)
   expect(seen.tools[0]).toMatchObject({ name: 'bet', inputSchema: BET_SCHEMA, isDeferred: false })
+  expect(seen.tools[1]).toMatchObject({ name: 'done', inputSchema: DONE_SCHEMA, isDeferred: false })
+  expect(DONE_SCHEMA).toEqual({
+    type: 'object',
+    properties: {
+      broken: { type: 'string', maxLength: 500, description: 'Rules you know are broken, in your own words. Leave it out when none.' },
+    },
+  })
+  // the AI learns of the done tool where it learns of the bet
+  expect(BET_DESCRIPTION).toContain('When the task is finished, call the done tool.')
 })
 
 test('a test run with no bet is refused, and the person is told why', async ($, on) => {
@@ -105,11 +115,26 @@ test('a won bet: a toast, no sound, the status counts it', async ($, on) => {
   const out = await betRun($, 'npm test')
 
   expect(out.context?.at(-1)).toBe(
-    'Lie Eater: bet #1 WON. You said the next run will pass, 90% sure. The run: npm test → 34 passed in 1s.',
+    'Lie Eater: bet #1 WON. You said the next run will pass, 90% sure. The run: npm test → 34 passed in 1s. If the task is finished, call the done tool.',
   )
   expect(seen.toasts.at(-1)).toBe('BET WON: the next run will pass, 90% sure')
   expect(seen.sounds).toBe(1)
   expect(seen.status.at(-1)).toContain('Referee present · bets 1/1')
+})
+
+test('a bet settled on a piped run of the test command says that run cannot end the game', async ($, on) => {
+  world(on)
+  on('tool.call', passing)
+
+  await run($, 'summon', 'pytest')
+  const out = await betRun($, 'pytest -q 2>&1 | tail -5')
+
+  expect(out.context?.at(-1)).toBe(
+    'Lie Eater: bet #1 WON. You said the next run will pass, 90% sure. The run: pytest -q 2>&1 | tail -5 → 34 passed in 1s. This run cannot end the game: run `pytest` by itself before you call done.',
+  )
+  // a passing run of another command says nothing of the done tool
+  await edit($)
+  expect((await betRun($, 'npm run build')).context?.at(-1)).not.toContain('done')
 })
 
 test('a bet on a result that was already known is void', async ($, on) => {
@@ -120,7 +145,9 @@ test('a bet on a result that was already known is void', async ($, on) => {
   await betRun($, 'npm test')
   const again = await betRun($, 'npm test')
 
-  expect(again.context?.at(-1)).toBe('Lie Eater: bet #2 VOID. Nothing changed since the last run.')
+  expect(again.context?.at(-1)).toBe(
+    'Lie Eater: bet #2 VOID. Nothing changed since the last run. If the task is finished, call the done tool.',
+  )
   const lines = await paneLines($)
   expect(has(lines, 'VOID · nothing changed since the last run')).toBe(true)
   expect(has(lines, 'Bets: 1 won, 0 lost, 1 void')).toBe(true)

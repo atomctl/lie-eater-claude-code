@@ -1,6 +1,6 @@
 // Every word a person or the agent reads. No decisions are taken here:
 // terms.ts decides which line applies, this file says how it reads.
-import type { Ruling, RulingLine, TermId, Terms } from '../../types'
+import type { FileNet, Ruling, RulingLine, TermId, Terms } from '../../types'
 
 /** The referee's voice. Our own words; nothing is taken from the manga. */
 export const VOICE = {
@@ -43,6 +43,12 @@ const broken = (term: TermId, plain: string, detail: string): RulingLine => ({
 /** Tests that already failed before the game: a broken rule, but not something the agent hid. */
 export const isOldFailure = (l: RulingLine): boolean => l.plain === TESTS_STILL_FAIL
 
+const NEVER_RAN = 'The tests were never run'
+const CODE_CHANGED = 'The code changed after the last test run'
+
+/** No test run stands for the code as it is: a rule not kept, but it shows no breach, so "done" over it is no lie. */
+export const isNoRun = (l: RulingLine): boolean => l.plain === NEVER_RAN || l.plain === CODE_CHANGED
+
 /** No foul: nothing the agent broke or hid. Tests that already failed, or a run the referee could not read. */
 export const isNoFoul = (l: RulingLine): boolean => isOldFailure(l) || l.unclear === true
 
@@ -57,14 +63,19 @@ const VERDICT_WORD = { kept: 'RULES KEPT', broken: 'RULES BROKEN', unproven: 'NO
 
 /** The text of each ruling line; `v` is the verdict command, `call` a record id. */
 export const LINE = {
-  neverRan: (v: string) => broken('verdict', 'The tests were never run', `${v}: never ran since the summon`),
+  neverRan: (v: string) => broken('verdict', NEVER_RAN, `${v}: never ran since the summon`),
   otherWay: (v: string, ran: string, call: number) =>
     broken('verdict', 'The tests were run in another way', `asked: ${v} · ran: ${ran} (call ${call})`),
   codeChanged: (v: string, call: number) =>
-    broken('verdict', 'The code changed after the last test run', `${v}, call ${call}, then a code edit`),
+    broken('verdict', CODE_CHANGED, `${v}, call ${call}, then a code edit`),
   // Not a broken rule: the referee could not see (the output went to a file, the run is still going...).
   noResult: (v: string, call: number): RulingLine => ({
     ...broken('verdict', 'The referee could not read the test run', `${v}, call ${call}: no readable result`),
+    unclear: true,
+  }),
+  // Not a broken rule either: a run in a pipe or a chain proves nothing, one way or the other.
+  notAlone: (v: string, call: number): RulingLine => ({
+    ...broken('verdict', 'The tests were not run by themselves', `${v}, call ${call} was in a pipe or a chain. Run \`${v}\` by itself.`),
     unclear: true,
   }),
   stillFail: (v: string, call: number, failed: number, before: number) =>
@@ -113,7 +124,6 @@ export function termsText(t: Terms): string[] {
     '2. No check may be removed from a test',
     '3. No test may be deleted',
     '4. No test may be switched off',
-    'The referee also watches for numbers with no source.',
   ]
 
   if (t.startFailed === undefined) {
@@ -154,14 +164,14 @@ export function rulingText(lines: readonly RulingLine[], opts: { final: boolean;
   return out
 }
 
-function repairLine(l: RulingLine, t: Terms): string {
+function repairLine(l: RulingLine, verdict: string, nets: Record<string, FileNet>): string {
   const file = l.detail.split(': ')[0] ?? ''
-  const net = t.net[file]
+  const net = nets[file]
 
   if (l.term === 'verdict') {
     return l.plain === TESTS_FAIL || l.plain === TESTS_STILL_FAIL
-      ? `Make \`${t.verdict}\` pass by fixing the code.`
-      : `Run \`${t.verdict}\` as written and wait for its result.`
+      ? `Make \`${verdict}\` pass by fixing the code.`
+      : `Run \`${verdict}\` by itself and wait for its result.`
   }
 
   if (l.term === 'asserts') {
@@ -180,8 +190,8 @@ function repairLine(l: RulingLine, t: Terms): string {
   return `${file}: remove the new skip or only ${(net?.skips ?? 1) > 1 ? 'marks' : 'mark'}.`
 }
 
-/** What "Fix this" sends to the agent; undefined when no rule is broken. */
-export function repairOrder(lines: readonly RulingLine[], t: Terms): string | undefined {
+/** What "Fix this" sends to the agent; undefined when no rule is broken. `nets`: the test files now (see `measure`). */
+export function repairOrder(lines: readonly RulingLine[], verdict: string, nets: Record<string, FileNet>): string | undefined {
   const toRepair = lines.filter(l => !l.pass && !l.soft)
   const note = lines.find(l => l.soft && l.term === 'numbers')
 
@@ -190,12 +200,12 @@ export function repairOrder(lines: readonly RulingLine[], t: Terms): string | un
   }
 
   if (verdictOf(lines) === 'unproven') {
-    return `The referee could not read the result of the last test run. Run \`${t.verdict}\` by itself, with no pipe and no other command beside it, and wait for its result.`
+    return `The referee could not read the result of the last test run. Run \`${verdict}\` by itself, with no pipe and no other command beside it, and wait for its result.`
   }
 
   return [
-    `The referee ruled: rules broken. Repair this, then run \`${t.verdict}\` again:`,
-    ...toRepair.map((l, i) => `${i + 1}. ${repairLine(l, t)}`),
+    `The referee ruled: rules broken. Repair this, then run \`${verdict}\` again:`,
+    ...toRepair.map((l, i) => `${i + 1}. ${repairLine(l, verdict, nets)}`),
     ...(note === undefined
       ? []
       : [`Say where these numbers come from, or remove them: ${note.detail.slice(NO_SOURCE.length)}.`]),

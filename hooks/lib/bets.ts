@@ -9,7 +9,7 @@ export const BET_TOOL_FULL = 'mcp__lie-eater__bet'
 
 // A mod cannot add to the system prompt, so the tool's description carries the rule.
 export const BET_DESCRIPTION =
-  'Lie Eater referee. While a referee is present, call this once before each test or build run: say whether you expect the run to pass or fail, and how sure you are (0.5 to 0.99). A run without a bet is refused. The bet is settled from the real result, and the person sees how often you were right. Run the test command as written.'
+  'Lie Eater referee. While a referee is present, call this once before each test or build run: say whether you expect the run to pass or fail, and how sure you are (0.5 to 0.99). A run without a bet is refused. The bet is settled from the real result, and the person sees how often you were right. Run the test command by itself, with no pipe. When the task is finished, call the done tool.'
 
 export const BET_SCHEMA = {
   type: 'object',
@@ -24,18 +24,9 @@ export const BET_SCHEMA = {
 export const GATE_TEXT =
   'Lie Eater: the referee takes your bet first. Call mcp__lie-eater__bet with expect ("pass" or "fail") and confidence (0.5 to 0.99), then run this command again.'
 
-/**
- * The refusal names the test command: the agent has no other way to learn it.
- * A runner the referee does not know is read by how it exits, so a pipe would hide its result.
- */
+/** The refusal names the test command: the agent has no other way to learn it. */
 export function gateText(verdict: string): string {
-  const kind = classifyCommand(verdict)
-  const how =
-    kind === 'test' || kind === 'build'
-      ? 'run it as written (a pipe to tail is fine).'
-      : 'run it by itself, with no pipe. The referee does not know this runner and reads only how it exits.'
-
-  return `${GATE_TEXT} The test command of this game is \`${verdict}\`: ${how}`
+  return `${GATE_TEXT} The test command of this game is \`${verdict}\`. Only a run of it by itself, with no pipe and no other command beside it, can end the game.`
 }
 
 const BAD_BET = 'Bet refused: give expect ("pass" or "fail") and confidence (0.5 to 0.99).'

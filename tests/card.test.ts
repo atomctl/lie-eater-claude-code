@@ -11,7 +11,7 @@ const NOW = '2026-11-20T12:00:00.000Z'
 const play = (verdict: string, state: 'clean' | 'failed' | 'unknown'): Terms =>
   [rec({ id: 3, kind: 'test', target: verdict, state })].reduce(track, summon(verdict, { id: 1, at: 5000 }, []))
 const ruling = (game: Terms, more: Partial<Ruling> = {}): Ruling => {
-  const lines = rule(game, [])
+  const lines = rule(game, { net: {}, gone: [] }, [])
 
   return {
     id: 1,

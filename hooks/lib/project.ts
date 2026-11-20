@@ -9,15 +9,6 @@ export async function projectRoot($: EngineInterface): Promise<string> {
   return $.session.root().catch(() => '')
 }
 
-/** Where the AI's shell stands, absolute; '' when the engine does not say. */
-export async function shellFolder($: EngineInterface): Promise<string> {
-  try {
-    return await $.session.cwd()
-  } catch {
-    return ''
-  }
-}
-
 /**
  * A path of the project, made absolute. `$.fs` reads a relative path from
  * where the AI's shell stands, and a `cd packages/api` by the AI moves that:
@@ -37,14 +28,35 @@ export async function projectFiles($: EngineInterface): Promise<Record<string, s
   return Object.fromEntries(PROJECT_FILES.map((name, i) => [name, texts[i]]))
 }
 
-/** The names of the files in the project's folder and in its test folders. */
-export async function projectNames($: EngineInterface): Promise<string[]> {
-  const here = await inProject($)
-  const [root, tests, test] = await Promise.all([
-    (here === '' ? $.fs.list() : $.fs.list(here)).catch(() => []),
-    $.fs.list(await inProject($, 'tests')).catch(() => []),
-    $.fs.list(await inProject($, 'test')).catch(() => []),
-  ])
+// Folders that hold no tests of the project. A folder whose name starts with a dot is left out too.
+const NOT_THE_PROJECT = new Set(['node_modules', 'venv', 'env', 'dist', 'build', 'target', 'vendor', '__pycache__'])
+// shortcut: a project with more folders or files than this is not walked to its end, so a test file
+// behind the limit is not in a game's snapshot; raise the limits when a real project hits them.
+const FOLDERS_WALKED = 400
+const NAMES_KEPT = 5000
 
-  return [...root.map(e => e.name), ...tests.map(e => `tests/${e.name}`), ...test.map(e => `test/${e.name}`)]
+/**
+ * The names of the project's files, by their paths inside the project, at any
+ * depth: a test file deeper down (`src/__tests__/a.test.ts`) is measured too.
+ * `$.fs.list` reads one folder, so the folders are walked one by one.
+ */
+export async function projectNames($: EngineInterface): Promise<string[]> {
+  const root = await inProject($)
+  const names: string[] = []
+  const folders = ['']
+
+  for (let i = 0; i < folders.length && i < FOLDERS_WALKED && names.length < NAMES_KEPT; i += 1) {
+    const folder = folders[i] ?? ''
+    const at = folder === '' ? root : root === '' ? folder : `${root}/${folder}`
+    const entries = await (at === '' ? $.fs.list() : $.fs.list(at)).catch(() => [])
+
+    for (const entry of entries) {
+      const name = folder === '' ? entry.name : `${folder}/${entry.name}`
+
+      if (entry.kind !== 'dir') names.push(name)
+      else if (!entry.name.startsWith('.') && !NOT_THE_PROJECT.has(entry.name)) folders.push(name)
+    }
+  }
+
+  return names
 }

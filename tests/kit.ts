@@ -20,19 +20,14 @@ export const PANE = {
   },
 } as const
 
-// What the small model answers to the one question it is asked.
-export const DONE = 'DONE'
-export const NOT_DONE = 'NOT'
-
 export type Seen = {
   toasts: string[]
   sounds: number
   opens: number
   status: (string | undefined)[]
   prompts: { text: string; asUser: boolean }[]
+  /** Model calls the mod made: the referee makes none. */
   classified: number
-  /** The last "said done" request the mod made. */
-  asked?: { model: string; system?: unknown; prompt: unknown; maxTokens?: number }
   written: Record<string, string>
   tools: { name: string; inputSchema?: unknown; isDeferred?: unknown }[]
   redraws: number
@@ -43,16 +38,13 @@ export type Seen = {
 export type World = {
   files?: Record<string, string>
   /** File names in the project's folder, and in its `tests` folder under the key `tests`. */
-  dirs?: { root?: string[]; tests?: string[] }
-  label?: () => string | Promise<string>
+  dirs?: { root?: string[]; tests?: string[]; deep?: Record<string, string[]> }
   /** How long the sound takes; left out, it ends at once. */
   sound?: () => Promise<void>
   /** What opening the pane does; left out, it is placed. */
   open?: () => void
   /** The project's root, absolute. Left out, the engine names none. */
   root?: string
-  /** Where the AI's shell stands, absolute. Left out, it stands in the project's root. */
-  cwd?: string
 }
 
 export function world(on: On, opts: World = {}): Seen {
@@ -90,15 +82,6 @@ export function world(on: On, opts: World = {}): Seen {
 
     return { value: opts.root }
   })
-  on('session.cwd', () => {
-    const cwd = opts.cwd ?? opts.root
-
-    if (cwd === undefined) {
-      throw new Error('no working directory')
-    }
-
-    return { value: cwd }
-  })
   on('ui.open', () => {
     seen.opens += 1
     opts.open?.()
@@ -130,24 +113,30 @@ export function world(on: On, opts: World = {}): Seen {
 
     return { value: text }
   })
-  on('fs.exists', (_, e) => ({ value: files[named(e.path)] !== undefined || seen.written[e.path] !== undefined }))
   on('fs.list', (_, e) => {
-    const folder = named(e.path ?? '')
-    const names = (folder === 'tests' || folder === 'test' ? opts.dirs?.tests : opts.dirs?.root) ?? []
+    const entry = (name: string, kind: 'file' | 'dir') => ({ name, kind, size: 0, mtimeMs: 0, isLink: false })
+    // `dirs.tests` is the `tests` folder; `dirs.deep` maps any other folder to its file names.
+    const tree: Record<string, string[]> = { ...opts.dirs?.deep, ...(opts.dirs?.tests ? { tests: opts.dirs.tests } : {}) }
+    // Which folder of the tree the path names (`/home/me/calc/src/__tests__`); any other path is the project's root.
+    const known = Object.keys(tree).flatMap(path => path.split('/').map((_, i, parts) => parts.slice(0, i + 1).join('/')))
+    const asked = e.path ?? ''
+    const folder = known.filter(path => asked === path || asked.endsWith(`/${path}`)).sort((a, b) => b.length - a.length)[0] ?? ''
+    const inside = Object.keys(tree)
+      .filter(path => (folder === '' ? true : path.startsWith(`${folder}/`)))
+      .map(path => (folder === '' ? path : path.slice(folder.length + 1)).split('/')[0] ?? '')
+    const files = folder === '' ? (opts.dirs?.root ?? []) : (tree[folder] ?? [])
 
-    return { value: names.map(name => ({ name, kind: 'file' as const, size: 0, mtimeMs: 0, isLink: false })) }
+    return { value: [...files.map(name => entry(name, 'file')), ...[...new Set(inside)].map(name => entry(name, 'dir'))] }
   })
   on('fs.write', (_, e) => {
     seen.written[e.path] = e.text
 
     return { value: undefined }
   })
-  on('model.complete', async (_, e) => {
+  on('model.complete', () => {
     seen.classified += 1
-    seen.asked = e as never
-    const text = await (opts.label?.() ?? NOT_DONE)
 
-    return { value: { isAnswered: true, text, usage: {} } as never }
+    return { value: { isAnswered: true, text: '', usage: {} } as never }
   })
   on('prompt.submit', (_, e) => {
     const origin = e.origin as { asUser?: boolean } | undefined
@@ -169,17 +158,6 @@ export async function paneLines($: Engine): Promise<string[]> {
   return lines
 }
 
-/** The pane's lines, once `ready` holds; the ruling arrives a moment after the turn. */
-export async function paneWhen($: Engine, ready: (lines: string[]) => boolean): Promise<string[]> {
-  let lines = await paneLines($)
-
-  for (let i = 0; i < 50 && !ready(lines); i += 1) {
-    lines = await paneLines($)
-  }
-
-  return lines
-}
-
 export const run = ($: Engine, command: string, args = '') => $.command.run({ command, args } as never)
 export const bash = ($: Engine, command: string) => $.tool.call({ tool: 'Bash', command })
 export const bet = ($: Engine, expect: 'pass' | 'fail' = 'pass', confidence = expect === 'pass' ? 0.9 : 0.55) =>
@@ -190,5 +168,8 @@ export const betRun = async ($: Engine, command: string, expect: 'pass' | 'fail'
 
   return bash($, command)
 }
+/** The AI says the task is finished; `broken` is what it names as broken. */
+export const done = ($: Engine, broken?: string, more: Record<string, unknown> = {}) =>
+  $.tool.call({ tool: 'mcp__lie-eater__done', ...(broken === undefined ? {} : { broken }), ...more } as never)
 export const endTurn = ($: Engine, answer: string, more: Record<string, unknown> = {}) =>
   $.turn.complete({ answer, reason: 'answer', durationMs: 1, isAborted: false, turnId: 't1', ...more } as never)

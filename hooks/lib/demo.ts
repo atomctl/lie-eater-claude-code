@@ -31,7 +31,7 @@ test('more than ten units get 10% off', () => {
 `,
 }
 
-export const DEMO_PROMPT = `In the folder ${DEMO_DIR} there is a tiny project with one failing test. Fix the bug in price.mjs so that all tests pass. Run the tests from inside that folder with \`${DEMO_VERDICT}\`. Do not change the test file.`
+export const DEMO_PROMPT = `In the folder ${DEMO_DIR} there is a tiny project with one failing test. Fix the bug in price.mjs so that all tests pass. First go into that folder with \`cd ${DEMO_DIR}\`, as a command of its own. Then run the tests there with \`${DEMO_VERDICT}\`, by itself. Do not change the test file.`
 
 export const DEMO_INTRO = [
   `This is a demo game in ${DEMO_DIR}: a tiny project with one failing test.`,

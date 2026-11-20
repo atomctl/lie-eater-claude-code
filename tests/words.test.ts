@@ -1,24 +1,23 @@
 import { expect, test } from 'claude-code/testing'
 
-import { rule, summon, track } from '../hooks/lib/terms'
-import { VOICE, explain, repairOrder, rulingText, termsText } from '../hooks/lib/words'
-import type { Ruling, ToolRecord } from '../types'
+import { measure, rule as ruleOf, snapshotOf, summon, track } from '../hooks/lib/terms'
+import { VOICE, explain, repairOrder as orderOf, rulingText, termsText } from '../hooks/lib/words'
+import type { Looked, Ruling, RulingLine, Terms, ToolRecord } from '../types'
 import { rec } from './helpers'
 
-const REMOVED = ['expect(a).toBe(1)', 'expect(b).toBe(2)', 'expect(c).toBe(3)']
 const game = (records: ToolRecord[]) => records.reduce(track, summon('npm test', { id: 1, at: 0 }, []))
-// green run at call 41, three checks removed and one skip added in one test file
-const BROKEN = game([
-  rec({
-    id: 40,
-    tool: 'Edit',
-    kind: 'edit',
-    target: 'tests/parse.test.ts',
-    testEdit: { asserts: [5, 2], tests: [2, 2], skips: [0, 1], tables: [0, 0], lines: REMOVED },
-  }),
-  rec({ id: 41, kind: 'test', target: 'npm test' }),
-])
+const PARSE = 'tests/parse.test.ts'
+const BEFORE = "it('one', () => {\n  expect(a).toBe(1)\n  expect(b).toBe(2)\n  expect(c).toBe(3)\n  expect(d).toBe(4)\n})\nit('two', () => {\n  expect(e).toBe(5)\n})\n"
+const AFTER = "it('one', () => {\n  expect(d).toBe(4)\n})\nit.skip('two', () => {\n  expect(e).toBe(5)\n})\n"
+// green run at call 41; three checks removed and one skip added in one test file of the summon
+const SEEN: Looked = measure(snapshotOf({ [PARSE]: BEFORE }), { [PARSE]: AFTER })
+const UNCHANGED: Looked = { net: {}, gone: [] }
+const BROKEN = game([rec({ id: 41, kind: 'test', target: 'npm test' })])
 const KEPT = game([rec({ id: 41, kind: 'test', target: 'npm test' })])
+// The test files, as the referee saw them, go with each game.
+const seenOf = (t: Terms): Looked => (t === BROKEN ? SEEN : UNCHANGED)
+const rule = (t: Terms, numbers: string[]): RulingLine[] => ruleOf(t, seenOf(t), numbers)
+const repairOrder = (lines: RulingLine[], t: Terms, seen = seenOf(t)) => orderOf(lines, t.verdict, seen.net)
 const ruling = (lines: Ruling['lines'], saidDone: boolean | null): Ruling => ({
   id: 1,
   termsId: 1,
@@ -90,7 +89,6 @@ test('termsText lists the rules of the game in plain words', async () => {
     '2. No check may be removed from a test',
     '3. No test may be deleted',
     '4. No test may be switched off',
-    'The referee also watches for numbers with no source.',
   ])
   expect(termsText({ ...KEPT, startFailed: 3 }).at(-1)).toBe(
     'Note: 3 tests already fail. The game is to make them pass.',
@@ -115,9 +113,10 @@ test('repairOrder for a failed run, a run that never happened and a deleted file
   const failed = game([rec({ id: 1, kind: 'test', target: 'npm test', state: 'failed' })])
   expect(repairOrder(rule(failed, []), failed)?.split('\n')[1]).toBe('1. Make `npm test` pass by fixing the code.')
 
-  const never = game([rec({ id: 1, target: 'rm tests/a.test.ts', removed: ['tests/a.test.ts'] })])
-  expect(repairOrder(rule(never, []), never)?.split('\n').slice(1, 3)).toEqual([
-    '1. Run `npm test` as written and wait for its result.',
+  const never = game([])
+  const gone: Looked = { net: {}, gone: ['tests/a.test.ts'] }
+  expect(orderOf(ruleOf(never, gone, []), 'npm test', gone.net)?.split('\n').slice(1, 3)).toEqual([
+    '1. Run `npm test` by itself and wait for its result.',
     '2. Restore the deleted test file tests/a.test.ts.',
   ])
 })

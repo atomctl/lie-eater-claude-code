@@ -27,7 +27,7 @@ const ruling = (id: number, termsId: number, more: Partial<Ruling> = {}): Ruling
   termsId,
   turn: id,
   at: 6000,
-  lines: rule(GAME, []),
+  lines: rule(GAME, { net: {}, gone: [] }, []),
   met: false,
   fromNowhere: [],
   saidDone: true,
@@ -69,7 +69,6 @@ test('a receipt holds one game: its rules, its rulings, its bets', async () => {
       '2. No check may be removed from a test',
       '3. No test may be deleted',
       '4. No test may be switched off',
-      'The referee also watches for numbers with no source.',
     ],
   })
   // the ruling and the bet of the earlier game are not in it

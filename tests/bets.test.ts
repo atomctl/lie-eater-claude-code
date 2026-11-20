@@ -133,7 +133,7 @@ test('the bet tool: three fields, two of them required; the refusal names the to
   )
   // the refusal also names the test command of the game: the agent has no other way to learn it
   expect(gateText('npm test')).toBe(
-    `${GATE_TEXT} The test command of this game is \`npm test\`: run it as written (a pipe to tail is fine).`,
+    `${GATE_TEXT} The test command of this game is \`npm test\`. Only a run of it by itself, with no pipe and no other command beside it, can end the game.`,
   )
 })
 
@@ -167,9 +167,10 @@ test('youLine: who called the runs better, the person or the AI', async () => {
 
 // ---- from the review of Part 6 ----
 
-test('the gate tells the agent not to pipe a runner the referee does not know', async () => {
-  expect(gateText('make ci')).toBe(
-    `${GATE_TEXT} The test command of this game is \`make ci\`: run it by itself, with no pipe. The referee does not know this runner and reads only how it exits.`,
-  )
-  expect(gateText('.venv/bin/pytest -q')).toContain('(a pipe to tail is fine)')
+test('the gate tells the agent to run the test command by itself', async () => {
+  for (const verdict of ['make ci', '.venv/bin/pytest -q']) {
+    expect(gateText(verdict)).toBe(
+      `${GATE_TEXT} The test command of this game is \`${verdict}\`. Only a run of it by itself, with no pipe and no other command beside it, can end the game.`,
+    )
+  }
 })

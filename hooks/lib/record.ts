@@ -1,15 +1,15 @@
 // The recorder's rules: what one tool call was, and how it ended.
 // Plain functions only. Nothing here talks to the engine.
-import type { CommandKind, FileCounts, TestEdit, ToolRecord } from '../../types'
+import type { CommandKind, FileCounts, ToolRecord } from '../../types'
 import {
   CODE_FILE,
   classifyCommand,
   countsAreItsOwn,
+  isAlone,
   isMasked,
   runsAfterAnother,
   runsBeforeAnother,
   sharesOutput,
-  words,
 } from './commands'
 
 export { classifyCommand, isShellEdit } from './commands'
@@ -80,74 +80,18 @@ const TEST_FILE =
   /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)test_[^/]+\.py$|_test\.(py|go|rb)$|Tests?\.java$|_spec\.rb$/
 /** The endings of files that hold tests. */
 export const TEST_SOURCE = /\.(py|[cm]?[jt]sx?|go|rb|java|rs|php|cs|kt|swift)$/
-const TEST_FOLDER = /(^|\/)(tests?|__tests__|spec)$/
 
 export function isTestFile(path: string): boolean {
   return TEST_FILE.test(path)
 }
 
 /**
- * A file of the project is named by its path there. A folder above the project
- * (`~/tests/calc`) must not make its files test files, and a ruling must not
- * show where the person keeps the project.
+ * A file of the project is named by its path there: a folder above the project
+ * (`~/tests/calc`) is no part of its name, and the record must not show where
+ * the person keeps the project.
  */
 export const inside = (root: string, path: string): string =>
   root !== '' && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
-
-// A path as it is read from a folder, with `.` and `..` resolved; an absolute path stands by itself.
-function from(folder: string, path: string): string {
-  const whole = path.startsWith('/') || folder === '' ? path : `${folder}/${path}`
-  const parts: string[] = []
-
-  for (const part of whole.split('/')) {
-    if (part === '..') parts.pop()
-    else if (part !== '' && part !== '.') parts.push(part)
-  }
-
-  return `${whole.startsWith('/') ? '/' : ''}${parts.join('/')}`
-}
-
-// What may stand in front of `rm` or `cd`.
-const IN_FRONT = /^(?:sudo|command|exec|time|env|nohup|[A-Za-z_]\w*=.*)$/
-// A path the referee cannot place: it starts at the home folder, or holds a variable.
-const NO_PLACE = /^~|[$`]/
-
-/**
- * What the `rm` commands of a shell command take away from the tests: a test
- * file or a whole test folder, by its path inside the project. Only the words
- * of an `rm` count (`rm -rf dist && npm test` removes no `test`). A short path
- * is read from where the shell stands, and a `cd` in the command moves that.
- * A path outside the project, or one the referee cannot place (`$TMP/tests`,
- * `~/x`), is not the project's.
- */
-export function removedTests(command: string, root = '', stood = ''): string[] {
-  // Where the shell stands; undefined after a `cd` to a place the referee cannot follow.
-  let here: string | undefined = root === '' || stood === '' ? root : stood
-  const gone: string[] = []
-
-  for (const step of words(command)) {
-    const [name, ...args] = step.slice(Math.max(0, step.findIndex(word => !IN_FRONT.test(word))))
-
-    if (name === 'cd') {
-      const to = args[0] ?? '~'
-
-      here = NO_PLACE.test(to) || to === '-' || (here === undefined && !to.startsWith('/')) ? undefined : from(here ?? '', to)
-    }
-
-    const named = name === 'rm' ? args : name === 'git' && args[0] === 'rm' ? args.slice(1) : []
-
-    for (const arg of named) {
-      if (arg.startsWith('-') || NO_PLACE.test(arg) || (here === undefined && !arg.startsWith('/'))) continue
-
-      const path = inside(root, from(here ?? '', arg))
-      const isOutside = root !== '' && path.startsWith('/')
-
-      if (!isOutside && ((isTestFile(path) && TEST_SOURCE.test(path)) || TEST_FOLDER.test(path))) gone.push(path)
-    }
-  }
-
-  return gone
-}
 
 /** Source code only: a changelog, docs, config and data are not code. */
 export function isCodeFile(path: string): boolean {
@@ -171,31 +115,20 @@ const code = (text: string): string =>
     .filter(line => !/^\s*(\/\/|#(?![[!]))/.test(line))
     .join('\n')
 
-export function measureTestEdit(oldRaw: string, newRaw: string): TestEdit {
-  const oldText = code(oldRaw)
-  const newText = code(newRaw)
-  const kept = new Set(newText.split('\n').map(line => line.trim()))
-  const lines = oldText
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => count(line, ASSERTS) > 0 && !kept.has(line))
-    .slice(0, 3)
-    .map(line => line.slice(0, 120))
+/** The counts of a whole test file. */
+export function fileCounts(raw: string): FileCounts {
+  const text = code(raw)
 
-  return {
-    asserts: [count(oldText, ASSERTS), count(newText, ASSERTS)],
-    tests: [count(oldText, TESTS), count(newText, TESTS)],
-    skips: [count(oldText, SKIPS), count(newText, SKIPS)],
-    tables: [count(oldText, TABLES), count(newText, TABLES)],
-    lines,
-  }
+  return { asserts: count(text, ASSERTS), tests: count(text, TESTS), skips: count(text, SKIPS), tables: count(text, TABLES) }
 }
 
-/** The counts of a whole test file. */
-export function fileCounts(text: string): FileCounts {
-  const { asserts, tests, skips, tables } = measureTestEdit('', text)
-
-  return { asserts: asserts[1], tests: tests[1], skips: skips[1], tables: tables[1] }
+/** The check lines of a test file, trimmed: a removed one is quoted word for word. */
+export function checkLines(raw: string): string[] {
+  return code(raw)
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => count(line, ASSERTS) > 0)
+    .map(line => line.slice(0, 120))
 }
 
 export function extractNumbers(text: string): string[] {
@@ -209,17 +142,11 @@ export type RawCall = {
   agentId?: string
   command?: string
   path?: string
-  oldText?: string
   newText?: string
-  /** The whole file as it was before the edit, when the engine gave it. */
-  before?: string
   text?: string
   isError?: boolean
   isBackground?: boolean
   isInterrupted?: boolean
-  /** The project's root, and where the shell stood before the command: an `rm` names its files from there. */
-  root?: string
-  stood?: string
   /** The command is the test command the person locked for the game in play. */
   isVerdict?: boolean
 }
@@ -245,6 +172,10 @@ function stateOf(
   // A test run that ran no test proves nothing.
   if (counts !== undefined && counts.passed === 0 && counts.failed === 0) {
     return 'unknown'
+  }
+  // The locked command by itself: its exit status decides. The counts are proof text only.
+  if (raw.isVerdict === true && isAlone(command)) {
+    return raw.isError ? 'failed' : 'clean'
   }
   if (isMasked(command)) {
     // The exit code in sight is another command's (`| tail`, `; git status`):
@@ -298,39 +229,20 @@ export function makeRecord(raw: RawCall, id: number, turn: number, at: number): 
     // then the counts belong to nobody, and only an exit code in sight decides.
     const counts = found.length > 1 && sharesOutput(raw.command) ? undefined : worst(found)
 
-    const removed = removedTests(raw.command, raw.root, raw.stood)
-
     return {
       ...base,
       kind,
       target: raw.command,
       state: stateOf(raw, kind, found, counts, byWord),
       ...(counts ? { counts } : {}),
-      ...(removed.length > 0 ? { removed } : {}),
     }
-  }
-
-  const editKind = EDIT_TOOLS[raw.tool]
-  const path = raw.path ?? ''
-  const state = raw.isError ? 'failed' : 'clean'
-
-  if (editKind === undefined) {
-    return { ...base, kind: 'tool', target: path, state }
   }
 
   return {
     ...base,
-    kind: editKind,
-    target: path,
-    state,
-    ...(isTestFile(path)
-      ? {
-          testEdit: {
-            ...measureTestEdit(raw.oldText ?? '', raw.newText ?? ''),
-            ...(raw.before === undefined ? {} : { file: fileCounts(raw.before) }),
-          },
-        }
-      : {}),
+    kind: EDIT_TOOLS[raw.tool] ?? 'tool',
+    target: raw.path ?? '',
+    state: raw.isError ? 'failed' : 'clean',
   }
 }
 

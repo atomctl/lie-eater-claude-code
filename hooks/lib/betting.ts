@@ -6,9 +6,11 @@ import type { EngineInterface, Timer } from 'claude-code'
 
 import type { Bet, Terms, ToolRecord } from '../../types'
 import { betText, callBet, closeTurn, gateText, isGated, postBet, settleBet, youWon } from './bets'
+import { isAlone } from './commands'
 import { debtNote, recordBet, refreshStatus } from './house'
 import { thump } from './referee'
 import { META_START, SHAPE } from './state'
+import { isTheVerdict } from './terms'
 import { VOICE } from './words'
 
 // Each file that touches state declares its own atoms (see state.ts).
@@ -132,9 +134,18 @@ export async function settle($: EngineInterface, r: ToolRecord, before: Terms | 
   }
 
   stopDice()
+  // A passing run of the test command by itself may be the end of the task; a piped one cannot be.
+  const isVerdict = isTheVerdict(before, r.target)
+  const hint = !isVerdict
+    ? ''
+    : !isAlone(r.target)
+      ? ` This run cannot end the game: run \`${before.verdict}\` by itself before you call done.`
+      : r.state === 'clean'
+        ? ' If the task is finished, call the done tool.'
+        : ''
 
   if (done.state === 'void') {
-    return `Lie Eater: bet #${done.id} VOID. Nothing changed since the last run.`
+    return `Lie Eater: bet #${done.id} VOID. Nothing changed since the last run.${hint}`
   }
 
   const word = done.state === 'won' ? 'WON' : 'LOST'
@@ -146,7 +157,7 @@ export async function settle($: EngineInterface, r: ToolRecord, before: Terms | 
   const called = youWon(done)
   if (called !== undefined) $.ui.toast(called ? 'You called it right.' : 'You called it wrong.')
 
-  return `Lie Eater: bet #${done.id} ${word}. You said ${betText(done)}. The run: ${done.line ?? ''}.`
+  return `Lie Eater: bet #${done.id} ${word}. You said ${betText(done)}. The run: ${done.line ?? ''}.${hint}`
 }
 
 /** Bet against your AI: the person's own call on the open bet (a button in the pane, or `/call`). */

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DONE, bash, bet, betRun, endTurn, paneLines, paneWhen, run, world } from './kit'
+import { bash, bet, betRun, done, paneLines, run, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' })
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
@@ -40,13 +40,12 @@ test('a settled bet goes into the ledger file of the project', async ($, on) => 
 })
 
 test('a lie makes a debt; the game that ends broken keeps it', async ($, on) => {
-  const seen = world(on, { label: () => DONE })
+  const seen = world(on)
   on('tool.call', failing)
 
   await run($, 'summon', 'npm test')
   await betRun($, 'npm test', 'fail')
-  await endTurn($, 'All tests pass. The work is done.')
-  await paneWhen($, l => has(l, 'A lie was told'))
+  await done($)
 
   expect(ledgerOf(seen).debt).toHaveLength(1)
   expect(has(await paneLines($), 'Debt: 1 open')).toBe(true)
@@ -62,7 +61,7 @@ test('a lie makes a debt; the game that ends broken keeps it', async ($, on) => 
 })
 
 test('the house remembers a debt from an earlier session, and a kept game repays it', async ($, on) => {
-  const seen = world(on, { label: () => DONE, files: { 'ledger.json': DEBT } })
+  const seen = world(on, { files: { 'ledger.json': DEBT } })
   on('tool.call', passing)
 
   await start($)
@@ -76,8 +75,8 @@ test('the house remembers a debt from an earlier session, and a kept game repays
       'Bet #1 taken: the next run will pass, 90% sure. The test command of this game is `npm test`. Open debt in this repository: 1. Only a game that ends with the rules kept repays it.',
   })
   await $.tool.call({ tool: 'Bash', command: 'npm test' })
-  await endTurn($, 'Fixed. All 34 tests pass. The work is done.')
-  const lines = await paneWhen($, l => has(l, 'VERDICT'))
+  await done($)
+  const lines = await paneLines($)
 
   expect(has(lines, 'VERDICT: RULES KEPT. Debt 1 → 0.')).toBe(true)
   expect(has(lines, 'Clean games in a row: 1')).toBe(true)
@@ -88,27 +87,26 @@ test('the house remembers a debt from an earlier session, and a kept game repays
 })
 
 test('a kept game with no debt before it says nothing about debt', async ($, on) => {
-  world(on, { label: () => DONE })
+  world(on)
   on('tool.call', passing)
 
   await run($, 'summon', 'npm test')
   await betRun($, 'npm test')
-  await endTurn($, 'Fixed. All 34 tests pass. The work is done.')
-  const lines = await paneWhen($, l => has(l, 'VERDICT'))
+  await done($)
+  const lines = await paneLines($)
 
   expect(lines.find(l => l.includes('VERDICT'))).toBe('VERDICT: RULES KEPT.')
   expect(has(lines, 'Clean games in a row: 1')).toBe(true)
 })
 
 test('/overrule: the referee yields, the debt is cleared by the person', async ($, on) => {
-  const seen = world(on, { label: () => DONE })
+  const seen = world(on)
   on('tool.call', failing)
 
   expect((await run($, 'overrule')).text).toBe('No ruling to overrule.')
   await run($, 'summon', 'npm test')
   await betRun($, 'npm test', 'fail')
-  await endTurn($, 'All tests pass. The work is done.')
-  await paneWhen($, l => has(l, 'A lie was told'))
+  await done($)
 
   expect((await run($, 'overrule')).text).toBe(
     'The referee yields to the person.\nRuling #1 is overruled. The receipt says so.',
@@ -135,14 +133,14 @@ test('a broken ledger file does not stop the session', async ($, on) => {
 })
 
 test('a game that ends writes its receipts; a ruling "so far" does not', async ($, on) => {
-  const seen = world(on, { label: () => 'does not say that' })
+  const seen = world(on)
   on('tool.call', failing)
   const written = (name: string) => Object.entries(seen.written).find(([path]) => path.endsWith(name))?.[1]
 
   await run($, 'summon', 'npm test')
   await betRun($, 'npm test', 'fail')
-  await endTurn($, 'One test still fails. Shall I look at the parser?')
-  await paneWhen($, l => has(l, 'RULING so far'))
+  await done($, 'One test still fails.')
+  expect(has(await paneLines($), 'RULING so far')).toBe(true)
   expect(written('.lie-eater/receipts.json')).toBeUndefined()
 
   const out = await run($, 'rule')
@@ -155,7 +153,7 @@ test('a game that ends writes its receipts; a ruling "so far" does not', async (
 })
 
 test('a game that ends by itself writes its receipts, and an overrule is written into them', async ($, on) => {
-  const seen = world(on, { label: () => DONE })
+  const seen = world(on)
   let isGreen = true
   on('tool.call', () => (isGreen ? passing() : failing()))
   const receipt = () =>
@@ -163,8 +161,7 @@ test('a game that ends by itself writes its receipts, and an overrule is written
 
   await run($, 'summon', 'npm test')
   await betRun($, 'npm test')
-  await endTurn($, 'Fixed. All 34 tests pass. The work is done.')
-  await paneWhen($, l => has(l, 'VERDICT'))
+  await done($)
   expect(receipt().rulings).toHaveLength(1)
   expect(receipt().rulings[0].met).toBe(true)
 
@@ -172,8 +169,7 @@ test('a game that ends by itself writes its receipts, and an overrule is written
   await run($, 'summon', 'npm test')
   await $.tool.call({ tool: 'Edit', file_path: 'src/a.ts', old_string: 'a', new_string: 'b' })
   await betRun($, 'npm test', 'fail')
-  await endTurn($, 'All tests pass. The work is done.')
-  await paneWhen($, l => has(l, 'A lie was told'))
+  await done($)
   await run($, 'overrule')
 
   expect(receipt().rulings).toHaveLength(1)
@@ -184,7 +180,6 @@ test('a game that ends by itself writes its receipts, and an overrule is written
 
 test('a ledger file with broken entries does not stop the game', async ($, on) => {
   const seen = world(on, {
-    label: () => DONE,
     files: { 'ledger.json': '{"version":1,"bets":[null],"games":[null],"debt":[null]}' },
   })
   on('tool.call', passing)
@@ -195,9 +190,9 @@ test('a ledger file with broken entries does not stop the game', async ($, on) =
     result: 'Bet #1 taken: the next run will pass, 90% sure. The test command of this game is `npm test`.',
   })
   await $.tool.call({ tool: 'Bash', command: 'npm test' })
-  await endTurn($, 'Fixed. All 34 tests pass. The work is done.')
+  await done($)
 
-  expect(has(await paneWhen($, l => has(l, 'VERDICT')), 'VERDICT: RULES KEPT.')).toBe(true)
+  expect(has(await paneLines($), 'VERDICT: RULES KEPT.')).toBe(true)
   expect(seen.toasts.at(-1)).toBe('RULES KEPT')
 })
 
@@ -229,19 +224,17 @@ test('/overrule debt clears a debt from an earlier session', async ($, on) => {
 })
 
 test('a game that ended with the rules kept has nothing to overrule', async ($, on) => {
-  const seen = world(on, { label: () => DONE })
+  const seen = world(on)
   let isGreen = false
   on('tool.call', () => (isGreen ? passing() : failing()))
 
   await run($, 'summon', 'npm test')
   await betRun($, 'npm test', 'fail')
-  await endTurn($, 'All tests pass. The work is done.')
-  await paneWhen($, l => has(l, 'A lie was told'))
+  await done($)
   isGreen = true
   await $.tool.call({ tool: 'Edit', file_path: 'src/a.ts', old_string: 'a', new_string: 'b' })
   await betRun($, 'npm test')
-  await endTurn($, 'Now it is fixed. All 34 tests pass. The work is done.')
-  await paneWhen($, l => has(l, 'VERDICT'))
+  await done($)
 
   expect((await run($, 'overrule')).text).toBe('No ruling to overrule.')
   expect(ledgerOf(seen).games).toHaveLength(1)
@@ -290,7 +283,7 @@ test('the house does not collect for a test run the referee could not read', asy
   await betRun($, 'npm test > out.txt 2>&1; tail -3 out.txt')
   const out = await run($, 'rule')
 
-  expect(out.text).toContain('? The referee could not read the test run')
+  expect(out.text).toContain('? The tests were not run by themselves')
   expect(out.text).toContain('VERDICT: NOT PROVEN.')
   expect(out.text).not.toContain('Debt')
   expect(ledgerOf(seen).debt).toEqual([])
@@ -302,7 +295,7 @@ test('the house does not collect for a test run the referee could not read', asy
 })
 
 test("the house's files go to the project's root, wherever the AI's shell stands", async ($, on) => {
-  const seen = world(on, { label: () => DONE, root: '/home/me/calc' })
+  const seen = world(on, { root: '/home/me/calc' })
   on('tool.call', passing)
 
   await run($, 'summon', 'npm test')
@@ -332,7 +325,6 @@ test('the demo project is made in the project\'s root too', async ($, on) => {
 
 test('a game that ends writes its card', async ($, on) => {
   const seen = world(on, {
-    label: () => DONE,
     files: { 'package.json': '{"scripts":{"test":"vitest run"}}', config: '[remote "origin"]\n\turl = git@github.com:someone/calc.git\n' },
   })
   on('tool.call', passing)
@@ -342,8 +334,7 @@ test('a game that ends writes its card', async ($, on) => {
   await run($, 'summon')
   await $.tool.call({ tool: 'Edit', file_path: 'src/a.ts', old_string: 'a', new_string: 'b' })
   await betRun($, 'npm test')
-  await endTurn($, 'Fixed. All 34 tests pass. The work is done.')
-  await paneWhen($, l => has(l, 'VERDICT'))
+  await done($)
 
   const card = written('.lie-eater/card.svg') ?? ''
   expect(card.startsWith('<svg')).toBe(true)

@@ -15,15 +15,14 @@ export const META_START: Meta = {
   turn: 0,
   denies: 0,
   unbet: 0,
-  promptNumbers: [],
 }
 
 export const SHAPE = {
-  records: 'records-1',
-  terms: 'terms-1',
-  watch: 'watch-1',
+  records: 'records-2',
+  terms: 'terms-2',
+  watch: 'watch-2',
   rulings: 'rulings-1',
   bets: 'bets-1',
   ledger: 'ledger-1',
-  meta: 'meta-1',
+  meta: 'meta-2',
 } as const

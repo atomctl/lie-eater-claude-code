@@ -28,7 +28,5 @@ export const fixture: Fixture = {
     bet('pass', 0.85),
     bash('npm test', ' PASS  tests/slug.test.ts\n\nTest Suites: 1 passed, 1 total\nTests:       4 passed, 4 total'),
   ],
-  answer: 'I added `slugify` in src/slug.ts with four tests. All 4 tests pass.',
-  promptNumbers: [],
-  expect: { kept: true, broken: [], notes: 0, bets: ['won', 'won'] },
+  expect: { kept: true, broken: [], notes: 0, lie: false, bets: ['won', 'won'] },
 }
