@@ -1,0 +1,138 @@
+// Shared stand-ins for the engine, for the wiring tests. Each hook here answers
+// what the engine would; `seen` records what the mod asked for.
+import { mock } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
+
+// The kit does not export the type of a test's `on`; the clock mock takes one.
+type On = Parameters<typeof mock.clock>[0]
+
+export const PANE = {
+  plugin: 'lie-eater',
+  component: 'Pane',
+  requestId: 'lie-eater',
+  props: {
+    title: 'Lie Eater',
+    isFocused: false,
+    bodyColumns: 100,
+    placement: 'dock',
+    scroll: { offset: 0, bodyRows: 60 },
+    view: {},
+  },
+} as const
+
+export const DONE = 'says the work is finished or working'
+export const NOT_DONE = 'does not say that'
+
+export type Seen = {
+  toasts: string[]
+  sounds: number
+  opens: number
+  status: (string | undefined)[]
+  prompts: { text: string; asUser: boolean }[]
+  classified: number
+  written: Record<string, string>
+  /** Lets the mod's timers run: a prompt the mod sends goes out a moment later. */
+  tick: () => Promise<void>
+}
+
+export type World = {
+  files?: Record<string, string>
+  label?: () => string | Promise<string>
+  /** How long the sound takes; left out, it ends at once. */
+  sound?: () => Promise<void>
+  /** What opening the pane does; left out, it is placed. */
+  open?: () => void
+}
+
+export function world(on: On, opts: World = {}): Seen {
+  const clock = mock.clock(on)
+  const seen: Seen = {
+    toasts: [],
+    sounds: 0,
+    opens: 0,
+    status: [],
+    prompts: [],
+    classified: 0,
+    written: {},
+    tick: () => clock.advance(5),
+  }
+  const files = opts.files ?? {}
+  const named = (path: string) => path.split('/').at(-1) ?? path
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('ui.open', () => {
+    seen.opens += 1
+    opts.open?.()
+
+    return { value: { isPlaced: true } }
+  })
+  on('ui.toast', (_, e) => {
+    seen.toasts.push(e.text)
+
+    return { value: undefined }
+  })
+  on('ui.status', (_, e) => {
+    seen.status.push(e.text)
+
+    return { value: undefined }
+  })
+  on('audio.play', async () => {
+    seen.sounds += 1
+    await opts.sound?.()
+
+    return { value: undefined }
+  })
+  on('fs.read', (_, e) => {
+    const text = files[named(e.path)] ?? seen.written[e.path]
+
+    if (text === undefined) {
+      throw new Error(`no such file: ${e.path}`)
+    }
+
+    return { value: text }
+  })
+  on('fs.write', (_, e) => {
+    seen.written[e.path] = e.text
+
+    return { value: undefined }
+  })
+  on('model.classify', async () => {
+    seen.classified += 1
+
+    return { value: await (opts.label?.() ?? NOT_DONE) }
+  })
+  on('prompt.submit', (_, e) => {
+    const origin = e.origin as { asUser?: boolean } | undefined
+    seen.prompts.push({ text: e.text, asUser: origin?.asUser === true })
+
+    return { text: e.text }
+  })
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  return seen
+}
+
+/** Every line of text the pane shows now. */
+export async function paneLines($: Engine): Promise<string[]> {
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const lines = (await ui.findAll({ type: 'Text' })).map(el => el.text ?? '')
+  await ui.unmount()
+
+  return lines
+}
+
+/** The pane's lines, once `ready` holds; the ruling arrives a moment after the turn. */
+export async function paneWhen($: Engine, ready: (lines: string[]) => boolean): Promise<string[]> {
+  let lines = await paneLines($)
+
+  for (let i = 0; i < 50 && !ready(lines); i += 1) {
+    lines = await paneLines($)
+  }
+
+  return lines
+}
+
+export const run = ($: Engine, command: string, args = '') => $.command.run({ command, args } as never)
+export const bash = ($: Engine, command: string) => $.tool.call({ tool: 'Bash', command })
+export const endTurn = ($: Engine, answer: string, more: Record<string, unknown> = {}) =>
+  $.turn.complete({ answer, reason: 'answer', durationMs: 1, isAborted: false, turnId: 't1', ...more } as never)

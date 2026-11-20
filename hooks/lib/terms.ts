@@ -11,12 +11,15 @@ const tidy = (command: string): string => command.replace(/\s+/g, ' ').trim()
  * behind are allowed; `|| true`, extra arguments and other pipes are not.
  */
 export function isVerdictRun(command: string, verdict: string): boolean {
-  const bare = tidy(command)
+  return bareCommand(command) === tidy(verdict)
+}
+
+/** A command without a `cd` in front and without a pipe to `tail` or `head` behind. */
+export function bareCommand(command: string): string {
+  return tidy(command)
     .replace(/^cd \S+ && /, '')
     .replace(/ ?\| ?(tail|head)( [^|;&]*)?$/, '')
     .replace(/ 2>&1$/, '')
-
-  return bare === tidy(verdict)
 }
 
 export function detectVerdict(files: Record<string, string | undefined>): string | undefined {

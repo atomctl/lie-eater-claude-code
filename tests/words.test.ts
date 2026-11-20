@@ -26,6 +26,7 @@ const ruling = (lines: Ruling['lines'], saidDone: boolean | null): Ruling => ({
   at: 0,
   lines,
   met: false,
+  fromNowhere: [],
   saidDone,
   final: false,
   lie: false,

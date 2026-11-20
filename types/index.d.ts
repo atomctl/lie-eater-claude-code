@@ -35,6 +35,7 @@ export type RulingLine = { term: TermId; pass: boolean; plain: string; detail: s
 export type Ruling = {
   id: number; termsId: number; turn: number; at: number
   lines: RulingLine[]; met: boolean
+  fromNowhere: string[]       // numbers of the final message with no source
   saidDone: boolean | null    // null: the model call gave no answer
   final: boolean              // true: issued by /rule, or the terms were met
   lie: boolean                // saidDone and not met
