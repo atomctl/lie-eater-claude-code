@@ -1,7 +1,15 @@
 // The recorder's rules: what one tool call was, and how it ended.
 // Plain functions only. Nothing here talks to the engine.
-import type { FileCounts, TestEdit, ToolRecord } from '../../types'
-import { CODE_FILE, classifyCommand, countsAreItsOwn, isMasked, sharesOutput } from './commands'
+import type { CommandKind, FileCounts, TestEdit, ToolRecord } from '../../types'
+import {
+  CODE_FILE,
+  classifyCommand,
+  countsAreItsOwn,
+  isMasked,
+  runsAfterAnother,
+  runsBeforeAnother,
+  sharesOutput,
+} from './commands'
 
 export { classifyCommand, isShellEdit } from './commands'
 
@@ -141,6 +149,47 @@ export type RawCall = {
 
 const EDIT_TOOLS: Record<string, 'edit' | 'write'> = { Edit: 'edit', NotebookEdit: 'edit', Write: 'write' }
 
+// How a shell command ended, as far as the referee can tell.
+function stateOf(raw: RawCall, kind: CommandKind, found: readonly Counts[], counts: Counts | undefined): ToolRecord['state'] {
+  const command = raw.command ?? ''
+
+  if (raw.isBackground || raw.isInterrupted) {
+    return 'unknown'
+  }
+  if (kind !== 'test' && kind !== 'build') {
+    return raw.isError ? 'failed' : 'clean'
+  }
+  // A test run that ran no test proves nothing.
+  if (counts !== undefined && counts.passed === 0 && counts.failed === 0) {
+    return 'unknown'
+  }
+  if (isMasked(command)) {
+    // The exit code in sight is another command's (`| tail`, `; git status`):
+    // only the counts decide, and only when they are the run's own.
+    if (counts === undefined || !countsAreItsOwn(command)) {
+      return 'unknown'
+    }
+
+    return counts.failed > 0 ? 'failed' : 'clean'
+  }
+  if ((counts?.failed ?? 0) > 0) {
+    return 'failed'
+  }
+  if (raw.isError !== true) {
+    return 'clean'
+  }
+
+  // The chain failed, and no count shows a failure. With other commands in the
+  // chain that does not say which one failed:
+  //  - no summary at all and a command in front (`cd api && npm test`): the run may never have started;
+  //  - a summary with no failure and a command behind (`npm test && git commit`): that one may be what failed.
+  const shown = worst(found)
+  const maybeInFront = kind === 'test' && shown === undefined && runsAfterAnother(command)
+  const maybeBehind = kind === 'test' && shown !== undefined && shown.failed === 0 && runsBeforeAnother(command)
+
+  return maybeInFront || maybeBehind ? 'unknown' : 'failed'
+}
+
 export function makeRecord(raw: RawCall, id: number, turn: number, at: number): ToolRecord {
   const text = raw.text ?? ''
   const base = {
@@ -159,18 +208,8 @@ export function makeRecord(raw: RawCall, id: number, turn: number, at: number): 
     // Beside a command that prints files, a second summary may be a file's text:
     // then the counts belong to nobody, and only an exit code in sight decides.
     const counts = found.length > 1 && sharesOutput(raw.command) ? undefined : worst(found)
-    const isRun = kind === 'test' || kind === 'build'
-    // A hidden exit code leaves only the counts, and only when they are the run's own.
-    const isHidden = isRun && isMasked(raw.command) && (!counts || !countsAreItsOwn(raw.command))
-    const ranNothing = counts !== undefined && counts.passed === 0 && counts.failed === 0
-    const state =
-      raw.isBackground || raw.isInterrupted || isHidden || ranNothing
-        ? 'unknown'
-        : (counts?.failed ?? 0) > 0 || raw.isError
-          ? 'failed'
-          : 'clean'
 
-    return { ...base, kind, target: raw.command, state, ...(counts ? { counts } : {}) }
+    return { ...base, kind, target: raw.command, state: stateOf(raw, kind, found, counts), ...(counts ? { counts } : {}) }
   }
 
   const editKind = EDIT_TOOLS[raw.tool]

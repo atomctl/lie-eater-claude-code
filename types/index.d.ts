@@ -35,6 +35,7 @@ export type Terms = {
   deleted: string[]           // test files removed with rm or git rm
   made: string[]              // test files first written in this game; removing one again is no fault
   base?: Record<string, FileCounts> // per test file, its own counts before the agent's first edit in this game
+  lastReadRun?: number        // the newest test or build run whose result the referee could read
   otherRun?: { record: number; command: string }   // the newest test run that was not the verdict command
 }
 export type TermId = 'verdict' | 'asserts' | 'tests' | 'skips' | 'numbers'

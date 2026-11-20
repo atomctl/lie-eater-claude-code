@@ -112,7 +112,9 @@ export async function settle($: EngineInterface, r: ToolRecord, before: Terms | 
     return undefined
   }
 
-  const hadChange = before.lastGatedRun === 0 || before.lastCodeEdit > before.lastGatedRun
+  // A run that the referee could not read made nothing known.
+  const lastRead = before.lastReadRun ?? before.lastGatedRun
+  const hadChange = lastRead === 0 || before.lastCodeEdit > lastRead
   let settled: Bet | undefined
   await update($, bets, list =>
     list.map(b => {

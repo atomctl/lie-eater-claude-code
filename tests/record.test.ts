@@ -411,3 +411,29 @@ test('a limit, on purpose: a printed file is taken for the run when the run itse
 
   expect(made('npm test; cat old-output.txt', 'Tests: 12 passed, 12 total')).toBe('clean')
 })
+
+test('a chain that failed before the test run started is not a failed test run', async () => {
+  const made = (command: string, text: string) => makeRecord({ tool: 'Bash', command, text, isError: true }, 1, 1, 0).state
+
+  // from a staged game: the shell was already in that folder, `cd` failed, and no test ran
+  expect(made('cd .lie-eater/demo && node --test', 'Exit code 1\n(eval):cd:1: no such file or directory: .lie-eater/demo')).toBe('unknown')
+  // the run itself failed: its own counts say so
+  expect(made('cd api && npm test', 'Exit code 1\nTests: 2 failed, 10 passed, 12 total')).toBe('failed')
+  // with nothing in front of it, a failure is the run's own
+  expect(made('npm test', 'Exit code 1\nnpm error Missing script: "test"')).toBe('failed')
+  expect(made('npm test && git status', 'Exit code 1\nnpm error Missing script: "test"')).toBe('failed')
+})
+
+test('a failed chain does not say which command failed', async () => {
+  const made = (command: string, text: string) => makeRecord({ tool: 'Bash', command, text, isError: true }, 1, 1, 0).state
+
+  // the command behind the run failed (nothing to commit): the counts show no failure
+  expect(made('npm test && git commit -m "fix"', 'Exit code 1\nTests: 12 passed, 12 total\nnothing to commit')).toBe('unknown')
+  // behind a pipe or `;` the exit code is not the run's at all: the run's counts decide
+  expect(made('pytest -q 2>&1 | tail -5; grep -n TODO src/a.py', 'Exit code 1\n34 passed in 1.00s')).toBe('clean')
+  expect(made('npm test | tail -5; git diff --quiet', 'Exit code 1\nTests: 12 passed, 12 total')).toBe('clean')
+  // the run alone: its exit code is its own (a coverage limit, a crash at the end)
+  expect(made('npm test', 'Exit code 1\nTests: 12 passed, 12 total\ncoverage threshold for lines (90%) not met')).toBe('failed')
+  // a build shows no counts: a failed chain is a failed build
+  expect(made('cd web && npm run build', 'Exit code 1\nerror TS2322')).toBe('failed')
+})

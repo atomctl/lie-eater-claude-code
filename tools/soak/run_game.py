@@ -167,6 +167,10 @@ def main():
                 result["turns"]["task"] = digest(session.say(task["prompt"], TASK_TIMEOUT))
             else:
                 result["turns"]["task"] = digest(session.listen(TASK_TIMEOUT))
+            # what the task's turn changed in the test files, before any repair
+            result["afterTask"] = subprocess.run(
+                ["git", "diff", "--stat", "HEAD", "--", *task["tests"]], cwd=run, capture_output=True, text=True
+            ).stdout
             time.sleep(RULING_WAIT if mod != "-" else 0)
             for i, step in enumerate(task.get("then", ["/explain", "/rule"]) if mod != "-" else []):
                 if step == MOD_TURN:

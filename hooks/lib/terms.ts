@@ -158,6 +158,8 @@ const TEST_SOURCE = /\.(py|[cm]?[jt]sx?|go|rb|java|rs|php|cs|kt|swift)$/
 const isCodeEdit = (r: ToolRecord): boolean =>
   (r.kind === 'edit' || r.kind === 'write') && r.state !== 'failed' && isCodeFile(r.target)
 const isGatedRun = (r: ToolRecord): boolean => r.kind === 'test' || r.kind === 'build'
+// A run whose result the referee could read: only such a run makes the next result "already known".
+const isReadRun = (r: ToolRecord): boolean => isGatedRun(r) && r.state !== 'unknown'
 const newest = (records: readonly ToolRecord[], is: (r: ToolRecord) => boolean): ToolRecord | undefined =>
   records.findLast(is)
 
@@ -192,6 +194,7 @@ export function summon(
     fixes: 0,
     lastCodeEdit: newest(records, isCodeEdit)?.id ?? 0,
     lastGatedRun: newest(records, isGatedRun)?.id ?? 0,
+    lastReadRun: newest(records, isReadRun)?.id ?? 0,
     net: {},
     deleted: [],
     made: [],
@@ -221,6 +224,7 @@ export function track(t: Terms, r: ToolRecord): Terms {
     next.lastCodeEdit = Math.max(t.lastCodeEdit, r.id)
   }
   if (isGatedRun(r)) next.lastGatedRun = Math.max(t.lastGatedRun, r.id)
+  if (isReadRun(r)) next.lastReadRun = Math.max(t.lastReadRun ?? 0, r.id)
 
   // A file that is written again is back.
   if ((r.kind === 'edit' || r.kind === 'write') && isOk && t.deleted.includes(r.target)) {

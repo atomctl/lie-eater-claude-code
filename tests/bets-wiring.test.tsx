@@ -249,3 +249,28 @@ test('/call does the same as the buttons, and says so when no bet is open', asyn
   expect(seen.toasts.at(-1)).toBe('You called it wrong.')
   expect(has(await paneLines($), 'You 0 of 1 · the AI 1 of 1')).toBe(true)
 })
+
+test('a chain that failed before the test run started does not lose the bet', async ($, on) => {
+  const seen = world(on)
+  let started = false
+  on('tool.call', (_, e) =>
+    e.tool !== 'Bash' || started
+      ? passing()
+      : { result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n(eval):cd:1: no such file or directory: api' },
+  )
+
+  await run($, 'summon', 'npm test')
+  await $.tool.call({ tool: 'Edit', file_path: 'src/a.ts', old_string: 'a', new_string: 'b' })
+  await bet($)
+  await bash($, 'cd api && npm test')
+
+  expect(seen.toasts.some(t => t.startsWith('BET LOST'))).toBe(false)
+  expect(has(await paneLines($), 'OPEN')).toBe(true)
+
+  // the run that does start settles that bet: its result was not known before
+  started = true
+  await bash($, 'npm test')
+
+  expect(seen.toasts.at(-1)).toBe('BET WON: the next run will pass, 90% sure')
+  expect(has(await paneLines($), 'VOID')).toBe(false)
+})

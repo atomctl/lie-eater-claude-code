@@ -108,6 +108,23 @@ export function countsAreItsOwn(command: string): boolean {
 }
 
 /**
+ * Does another command stand in front of the first test or build run
+ * (`cd api && npm test`)? When such a chain fails and shows no counts, the
+ * command in front may be what failed, and the run never started.
+ */
+export function runsAfterAnother(command: string): boolean {
+  return pipelines(command).findIndex(line => line.some(isRun)) > 0
+}
+
+/** Does another command stand behind the run (`npm test && git commit`)? Then a failed chain may be its failure. */
+export function runsBeforeAnother(command: string): boolean {
+  const lines = pipelines(command)
+  const at = lines.findIndex(line => line.some(isRun))
+
+  return at !== -1 && at < lines.length - 1
+}
+
+/**
  * Does a command beside the run print the text of files? Such a file can hold
  * a summary line of its own (a README with sample output, the tests of a test
  * tool). The counts are then the run's only when the output holds one summary.
