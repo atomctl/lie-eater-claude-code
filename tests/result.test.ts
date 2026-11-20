@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
-import { INTRO, nowOf, resultOf } from '../hooks/lib/result'
+import { INTRO, munchOf, nowOf, resultOf } from '../hooks/lib/result'
+import { isLie } from '../hooks/lib/terms'
 import { LINE } from '../hooks/lib/words'
 
 const F = 'tests/test_cart.py'
@@ -113,4 +114,85 @@ test('the status line and the top of the pane say the same thing', async () => {
   // an accepted change is no result
   expect(nowOf({ armed: true, changed: false, last: { ...red, accepted: true } })).toEqual({ status: 'Lie Eater · watching', screen: [INTRO] })
   expect(INTRO).toBe('When the AI says "done", Lie Eater checks the proof: the checks must pass, and none may be removed or switched off.')
+})
+
+// ---- Munch: the face of the result, never the judge of it ----
+
+const LIED = 'You lied. I ate it.'
+// What the person sees after a done call, as the pane draws it.
+const munchAfter = (lines: Parameters<typeof resultOf>[0], named: string, worked: boolean, added: string[] = []) => {
+  const { result, screen } = resultOf(lines, named, worked, added)
+
+  return munchOf(nowOf({ armed: true, changed: false, last: { result, screen, added } }))
+}
+
+test('Munch says one line per result, and its face follows the result', async () => {
+  const red = (named: string, worked: boolean) => munchAfter([PASS, LINE.changed(F, 3)], named, worked)
+
+  expect(munchOf(nowOf({ armed: true, changed: false }))).toEqual({ face: 'watching', says: 'Nothing to eat yet.' })
+  expect(munchAfter([PASS], '', true, ['tests/test_tax.py'])).toEqual({ face: 'pleased', says: 'Green, and a new test to chew.' })
+  expect(munchAfter([PASS], '', true, [])).toEqual({ face: 'pleased', says: 'Green. Nothing new got tested.' })
+  // a check file changed, and the AI said so
+  expect(red('I changed the cart test: it was wrong.', true)).toEqual({ face: 'alarmed', says: 'A test got bent. It owned up.' })
+  // the same, and the AI did not say so
+  expect(red('', true)).toEqual({ face: 'alarmed', says: LIED })
+  // the same with no work of the AI since the watch began: nobody is called a liar
+  expect(red('', false)).toEqual({ face: 'alarmed', says: 'A test got bent. Nobody said why.' })
+  // a plain failing run, named or not
+  for (const named of ['', 'One test still fails.']) {
+    for (const worked of [true, false]) {
+      expect(munchAfter([LINE.fail('pytest', 3)], named, worked)).toEqual({ face: 'alarmed', says: 'Still red. Not done.' })
+    }
+  }
+  // every kind of "not checked"
+  for (const l of [LINE.neverRan('pytest'), LINE.noResult('pytest', 3), LINE.changedAfter('pytest', 3), LINE.extra('pytest', 'pytest -k a', 3), LINE.notWhole('pytest'), LINE.unread(F), LINE.notAlone('pytest', 3), LINE.stillFail('pytest', 3, 2, 2)]) {
+    expect(munchAfter([l], '', true)).toEqual({ face: 'hungry', says: 'No proof. Still hungry.' })
+  }
+  expect(munchOf(nowOf({ armed: true, changed: true }))).toEqual({ face: 'hungry', says: 'No proof. Still hungry.' })
+  expect(munchOf(nowOf({ armed: false, changed: false }))).toEqual({ face: 'hungry', says: 'No checks here. Nothing to bite.' })
+  // an accepted change is no result
+  const { result, screen } = resultOf([PASS, LINE.changed(F, 3)], '', true, [])
+  expect(munchOf(nowOf({ armed: true, changed: false, last: { result, screen, accepted: true } }))).toEqual({ face: 'watching', says: 'Nothing to eat yet.' })
+})
+
+test('every breach of a check file gets the same two lines: owned up, or not said', async () => {
+  for (const l of [LINE.changed(F, 1), LINE.gone(F), LINE.config('package.json'), LINE.only('tests/new.test.ts')]) {
+    expect(munchAfter([PASS, l], 'I changed it.', true).says).toBe('A test got bent. It owned up.')
+    expect(munchAfter([PASS, l], '', true).says).toBe(LIED)
+  }
+})
+
+test('"You lied. I ate it." only where the AI hid a changed check: never for honest work or a plain failing run', async () => {
+  const shapes = [[PASS], [LINE.fail('pytest', 3)], [LINE.neverRan('pytest')], [LINE.stillFail('pytest', 3, 2, 2)], [PASS, LINE.changed(F, 2)], [LINE.fail('pytest', 3), LINE.gone(F)], [PASS, LINE.config('package.json')], [LINE.notAlone('pytest', 3), LINE.only('tests/x.test.ts')]]
+
+  for (const lines of shapes) {
+    for (const named of ['', 'none', 'I changed the test.']) {
+      for (const worked of [true, false]) {
+        const { screen } = resultOf(lines, named, worked, [])
+        const hid = isLie(lines, worked, named) && screen[2] === 'The AI did not say so.'
+
+        expect({ lines: lines.map(l => l.term), named, worked, lied: munchAfter(lines, named, worked).says === LIED }).toEqual({ lines: lines.map(l => l.term), named, worked, lied: hid })
+      }
+    }
+  }
+})
+
+test('Munch\'s lines are short: at most eight words, one line, in no result line', async () => {
+  const all = [
+    munchOf(nowOf({ armed: true, changed: false })),
+    munchOf(nowOf({ armed: false, changed: false })),
+    munchOf(nowOf({ armed: true, changed: true })),
+    munchAfter([PASS], '', true, ['a.test.ts']),
+    munchAfter([PASS], '', true),
+    munchAfter([PASS, LINE.changed(F, 1)], 'x', true),
+    munchAfter([PASS, LINE.changed(F, 1)], '', true),
+    munchAfter([PASS, LINE.changed(F, 1)], '', false),
+    munchAfter([LINE.fail('pytest', 1)], '', true),
+  ].map(m => m.says)
+
+  for (const says of all) {
+    expect({ says, words: says.split(' ').length <= 8, oneLine: !says.includes('\n') }).toEqual({ says, words: true, oneLine: true })
+  }
+  // the facts stay the facts: the result lines never carry Munch
+  expect(resultOf([PASS, LINE.changed(F, 1)], '', true, []).screen.some(l => all.includes(l))).toBe(false)
 })

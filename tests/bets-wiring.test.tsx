@@ -96,7 +96,7 @@ test('a bet is taken, shown as open, and is not a recorded tool call', async ($,
   expect(has(lines, 'No tool calls yet.')).toBe(true)
 })
 
-test('a lost bet: the agent is told on the result; the person sees it only under Details', async ($, on) => {
+test('a lost bet: the agent is told on the result; the person gets one toast from Munch, no sound, and Details', async ($, on) => {
   const seen = world(on, project())
   on('tool.call', failing)
 
@@ -107,12 +107,25 @@ test('a lost bet: the agent is told on the result; the person sees it only under
   expect(out.context?.at(-1)).toBe(
     'Lie Eater: bet #1 LOST. You said the next run will pass, 90% sure. The run: npm test → 3 failed, 31 passed in 2.10s.',
   )
-  expect(seen).toMatchObject({ toasts: [], sounds: 0 })
+  expect(seen).toMatchObject({ toasts: ['Munch: "Sure of itself. Wrong. Ha." The AI bet "pass", 90% sure. The run failed.'], sounds: 0 })
 
   const lines = await paneLines($)
   expect(has(lines, 'LOST · npm test → 3 failed, 31 passed in 2.10s')).toBe(true)
   expect(has(lines, 'The AI said "90% sure". It was right 0 of 1 times.')).toBe(true)
   expect(has(lines, 'Bets: 0 won, 1 lost')).toBe(true)
+})
+
+test('a bet on "fail" lost on a passing run: one toast, with the fact the other way round', async ($, on) => {
+  const seen = world(on, project())
+  on('tool.call', passing)
+
+  await start($)
+  await betRun($, 'npm test', 'fail')
+  // the next lost bet is a toast of its own
+  await edit($)
+  await betRun($, 'npm test', 'fail')
+
+  expect(seen).toMatchObject({ toasts: [0, 1].map(() => 'Munch: "Sure of itself. Wrong. Ha." The AI bet "fail", 55% sure. The run passed.'), sounds: 0 })
 })
 
 test('a won bet: the agent hears it, and is told to call done', async ($, on) => {
@@ -144,7 +157,7 @@ test('a bet settled on a piped run of the full check says that run cannot show t
 })
 
 test('a bet on a result that was already known is void', async ($, on) => {
-  world(on, project())
+  const seen = world(on, project())
   on('tool.call', passing)
 
   await start($)
@@ -154,6 +167,8 @@ test('a bet on a result that was already known is void', async ($, on) => {
   expect(again.context?.at(-1)).toBe(
     'Lie Eater: bet #2 VOID. Nothing changed since the last run. If the task is finished, call the done tool.',
   )
+  // a won and a void bet: no toast
+  expect(seen.toasts).toEqual([])
   const lines = await paneLines($)
   expect(has(lines, 'VOID · nothing changed since the last run')).toBe(true)
   expect(has(lines, 'Bets: 1 won, 0 lost, 1 void')).toBe(true)
@@ -164,7 +179,7 @@ test('a bet on a result that was already known is void', async ($, on) => {
 })
 
 test('a run with no readable result leaves the bet open; the end of the turn makes it void', async ($, on) => {
-  world(on, project())
+  const seen = world(on, project())
   on('tool.call', () => ({ result: { backgroundTaskId: 'b1' }, text: 'Command running in background with ID: b1' }))
 
   await start($)
@@ -174,6 +189,7 @@ test('a run with no readable result leaves the bet open; the end of the turn mak
 
   await endTurn($, 'Still running.')
   expect(has(await paneLines($), 'VOID · no run settled it')).toBe(true)
+  expect(seen.toasts).toEqual([])
 })
 
 test("a subagent's run does not settle the main agent's bet", async ($, on) => {
@@ -226,7 +242,8 @@ test('while a bet is open the person may call it too; the pane keeps both scores
 
   await bash($, 'npm test')
   const lines = await paneLines($)
-  expect(seen.toasts).toEqual([])
+  // the AI lost its bet: one toast; the person's own call adds none
+  expect(seen.toasts).toEqual(['Munch: "Sure of itself. Wrong. Ha." The AI bet "pass", 90% sure. The run failed.'])
   expect(has(lines, 'You 1 of 1 · the AI 0 of 1')).toBe(true)
   ui = await mount()
   expect(await ui.find({ key: 'call-pass' })).toBeUndefined()

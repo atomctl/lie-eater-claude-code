@@ -108,6 +108,11 @@ export function callBet(bets: readonly Bet[], call: 'pass' | 'fail'): { bets: Be
 // Did the run pass? A won bet on "pass" and a lost bet on "fail" both mean it did.
 const ranClean = (b: Bet): boolean => (b.state === 'won') === (b.expect === 'pass')
 
+/** The one toast of a lost bet: Munch's jab, then the fact in plain words (no command, so nothing is cut). */
+export function lostToast(b: Bet): string {
+  return `Munch: "Sure of itself. Wrong. Ha." The AI bet "${b.expect}", ${Math.round(b.confidence * 100)}% sure. The run ${ranClean(b) ? 'passed' : 'failed'}.`
+}
+
 /** Was the person's call right? Undefined when there was no call or the bet did not settle. */
 export function youWon(b: Bet): boolean | undefined {
   return b.you === undefined || (b.state !== 'won' && b.state !== 'lost') ? undefined : (b.you === 'pass') === ranClean(b)

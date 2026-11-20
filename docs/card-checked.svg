@@ -1,6 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="322" viewBox="0 0 640 322" role="img" aria-label="Lie Eater: ✓ checked">
 <rect x="1" y="1" width="638" height="320" rx="14" fill="#0d1117" stroke="#30363d" stroke-width="2"/>
-<g id="character" transform="translate(504 24)" data-size="96"></g>
+<g id="munch" data-face="pleased" transform="translate(504 24) scale(0.96)">
+<ellipse cx="50" cy="54" rx="44" ry="40" fill="#E8812F"/>
+<ellipse cx="34" cy="26" rx="12" ry="5" fill="#F4A462"/>
+<path data-part="eye" d="M27 41 Q34 31 41 41" stroke="#2B1B12" stroke-width="5" stroke-linecap="round" fill="none"/>
+<path data-part="eye" d="M59 41 Q66 31 73 41" stroke="#2B1B12" stroke-width="5" stroke-linecap="round" fill="none"/>
+<path data-part="mouth" d="M20 58 Q50 88 80 58" stroke="#2B1B12" stroke-width="6" stroke-linecap="round" fill="none"/>
+<polygon data-part="tooth" points="37,73 46,76 42,84" fill="#FFFFFF"/>
+<polygon data-part="tooth" points="54,76 63,73 58,84" fill="#FFFFFF"/>
+</g>
 <text x="40" y="34" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="700" fill="#8b949e" text-anchor="start" letter-spacing="4">LIE EATER</text>
 <text x="40" y="70" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="32" font-weight="700" fill="#3fb950" text-anchor="start">✓ checked</text>
 <text x="40" y="100" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#e6edf3" text-anchor="start">The checks passed after the last change.</text>

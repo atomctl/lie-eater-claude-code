@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 100 100" role="img" aria-label="Munch, a round orange creature that is mostly a mouth">
+<ellipse cx="50" cy="54" rx="44" ry="40" fill="#E8812F"/>
+<ellipse cx="34" cy="26" rx="12" ry="5" fill="#F4A462"/>
+<path data-part="eye" d="M27 41 Q34 31 41 41" stroke="#2B1B12" stroke-width="5" stroke-linecap="round" fill="none"/>
+<path data-part="eye" d="M59 41 Q66 31 73 41" stroke="#2B1B12" stroke-width="5" stroke-linecap="round" fill="none"/>
+<path data-part="mouth" d="M20 58 Q50 88 80 58" stroke="#2B1B12" stroke-width="6" stroke-linecap="round" fill="none"/>
+<polygon data-part="tooth" points="37,73 46,76 42,84" fill="#FFFFFF"/>
+<polygon data-part="tooth" points="54,76 63,73 58,84" fill="#FFFFFF"/>
+</svg>

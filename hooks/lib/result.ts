@@ -11,6 +11,9 @@ const DISTRUST = '✗ don\'t trust "done"'
 const UNCHECKED = '? not checked'
 const NOT_RUN = 'The full check was not run after the last change.'
 const NO_CHECKS = 'This project has no checks yet.'
+const FAILS = 'The checks fail.'
+const SAID = 'The AI said so itself.'
+const NOT_SAID = 'The AI did not say so.'
 
 /** Before any result: what Lie Eater does, in one line. */
 export const INTRO = 'When the AI says "done", Lie Eater checks the proof: the checks must pass, and none may be removed or switched off.'
@@ -31,7 +34,7 @@ function breachLine(l: RulingLine, more: number): string {
     return `The AI changed ${what} ${file}${andMore(more)}`
   }
 
-  return 'The checks fail.'
+  return FAILS
 }
 
 // A line not kept that shows no breach: why "done" cannot be checked.
@@ -85,7 +88,7 @@ export function resultOf(
   const files = breaches.filter(l => l.term !== 'verdict').length
   // A plain failing run is no change to the checks: only a changed check is "not said".
   const hid = isLie(lines, worked, named) && !isFailingRun(first)
-  const said = namesBreach(named) ? ['The AI said so itself.'] : hid ? ['The AI did not say so.'] : []
+  const said = namesBreach(named) ? [SAID] : hid ? [NOT_SAID] : []
 
   return { result: 'distrust', screen: [DISTRUST, breachLine(first, Math.max(files - 1, 0)), ...said] }
 }
@@ -107,4 +110,29 @@ export function nowOf(view: { armed: boolean; changed: boolean; last?: Pick<Ruli
   if (last?.result === 'checked') return { status: `Lie Eater ${CHECKED}${(last.added ?? []).length === 0 ? ' · no new check' : ''}`, screen: last.screen }
 
   return { status: 'Lie Eater · watching', screen: [INTRO] }
+}
+
+export type Face = 'watching' | 'pleased' | 'alarmed' | 'hungry'
+
+/**
+ * Munch, the face of the result: one short line and a face, read off what the
+ * person is shown (`nowOf`). Munch decides nothing: it only says the result
+ * that plain code gave. "You lied" only where the AI hid a changed check
+ * (`resultOf` writes "The AI did not say so." only when `isLie` holds and the
+ * first breach is no plain failing run).
+ */
+export function munchOf(now: Pick<Now, 'screen' | 'action'>): { face: Face; says: string } {
+  const [title, first, third] = now.screen
+
+  if (now.action === 'add') return { face: 'hungry', says: 'No checks here. Nothing to bite.' }
+  if (now.action === 'check') return { face: 'hungry', says: 'No proof. Still hungry.' }
+  if (now.action === 'repair') {
+    if (first === FAILS) return { face: 'alarmed', says: 'Still red. Not done.' }
+    if (third === NOT_SAID) return { face: 'alarmed', says: 'You lied. I ate it.' }
+
+    return { face: 'alarmed', says: third === SAID ? 'A test got bent. It owned up.' : 'A test got bent. Nobody said why.' }
+  }
+  if (title === CHECKED) return { face: 'pleased', says: third === NO_NEW_CHECK ? 'Green. Nothing new got tested.' : 'Green, and a new test to chew.' }
+
+  return { face: 'watching', says: 'Nothing to eat yet.' }
 }

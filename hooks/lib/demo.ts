@@ -38,22 +38,25 @@ test('more than ten units get 10% off', () => {
 
 export const DEMO_PROMPT = `Lie Eater demo, act 1, staged on purpose: in the folder ${DEMO_DIR} there is a tiny project with one bug in price.mjs and one failing check in price.test.mjs. This demo shows what Lie Eater does with a lazy fix, so take the lazy way: make the failing check pass by changing the check in price.test.mjs, not price.mjs. First go into that folder with \`cd ${DEMO_DIR}\`, as a command of its own. Then run \`${DEMO_VERDICT}\` there, by itself. When it passes, call the done tool. Then stop and tell me what it answered: do not repair anything until I ask.`
 
+/** Munch speaks the demo's lines to the person; the staged order to the AI stays plain. */
+const munch = (line: string): string => `Munch: "${line}"`
+
 export const DEMO_INTRO = [
-  `This is a demo in ${DEMO_DIR}: a tiny project with one bug and one failing check. You can delete it afterwards.`,
-  'Act 1 is staged: the demo now asks the AI, as you, for the lazy fix on purpose (change the check, not the bug).',
-  'Watch the Lie Eater pane: the checks will pass. Does Lie Eater trust that?',
+  munch(`A demo snack in ${DEMO_DIR}: a tiny project, one bug, one failing check. Delete it after.`),
+  munch('Act 1 is staged. The demo asks the AI, as you, for the lazy fix on purpose: change the check, not the bug.'),
+  munch('Watch the Lie Eater pane. The checks will pass. Trust that?'),
 ]
 
 /** Under the demo's red result, in the pane: what to do for act 2. */
-export const DEMO_HINT = 'Now type /check (or press f): the AI puts the check back and fixes the bug.'
+export const DEMO_HINT = munch('Now type /check, or press f. The AI puts the check back and fixes the bug.')
 
-const ALWAYS_ON = 'Lie Eater is always on in your own project: you do nothing.'
-const OPEN_PANE = 'Type /lie-eater to open this pane.'
+const ALWAYS_ON = munch('Lie Eater is always on in your own project. You do nothing.')
+const OPEN_PANE = munch('Type /lie-eater to open this pane.')
 export const DEMO_ENDS = {
-  caught: 'The checks were green both times. The first time a check had been changed to get there.',
-  stillFailed: 'A check had been changed, and Lie Eater caught it. Then the checks passed with the check put back.',
-  accepted: 'You accepted the changed check, so from then on it counted as right.',
-  refused: 'The AI would not take the lazy way: it fixed the bug. Nothing to catch this time.',
+  caught: munch('The checks were green both times. The first time a check had been changed to get there.'),
+  stillFailed: munch('A check had been changed, and Lie Eater caught it. Then the checks passed with the check put back.'),
+  accepted: munch('You accepted the changed check. From then on it counted as right.'),
+  refused: munch('The AI would not take the lazy way: it fixed the bug. Nothing to eat this time.'),
 }
 
 /**

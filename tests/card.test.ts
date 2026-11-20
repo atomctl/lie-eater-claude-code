@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { cardSvg } from '../hooks/lib/card'
+import { cardSvg, munchSvg } from '../hooks/lib/card'
 import { EMPTY_LEDGER } from '../hooks/lib/ledger'
 import { buildReceipt } from '../hooks/lib/receipts'
 import { resultOf } from '../hooks/lib/result'
@@ -60,6 +60,22 @@ test('an accepted change says so on its card', async () => {
   expect(card(watch, ruling(watch, { accepted: true }))).toContain('You accepted this change.')
 })
 
+test('the line beside Munch leaves it room: broken at 50 characters, and a file name is never cut', async () => {
+  const watch = play('npm test', 'failed')
+  const lines = rule(watch, [{ file: 'tests/a_rather_long_folder_name/test_cart_totals.py', how: 'changed', n: 3 }], 'p')
+  const svg = card(watch, ruling(watch, { lines, ...resultOf(lines, '', true, []) }))
+  // Munch's body ends at y 114: the first row under the title (y 100) is the one beside it
+  const beside = (text: string) => [...text.matchAll(/<text x="40" y="(\d+)"[^>]*>([^<]*)<\/text>/g)].filter(m => Number(m[1]) >= 80 && Number(m[1]) < 115).map(m => m[2])
+  const short = rule(watch, [{ file: 'tests/test_cart.py', how: 'changed', n: 3 }], 'p')
+
+  // a line of 60 characters: broken beside Munch
+  expect(beside(card(watch, ruling(watch, { lines: short, ...resultOf(short, '', true, []) })))).toEqual(['The AI changed 3 lines in the check file'])
+  expect(beside(svg)).toEqual(['The AI changed 3 lines in the check file'])
+  // a file name is never cut: it is the fact a red card shows
+  expect(svg).toContain('tests/a_rather_long_folder_name/test_cart_totals.py.')
+  expect(svg).not.toContain('…')
+})
+
 test('the card escapes the text it shows', async () => {
   const watch = play('make test && echo <ok>', 'clean')
   const svg = card(watch, ruling(watch))
@@ -68,12 +84,35 @@ test('the card escapes the text it shows', async () => {
   expect(svg).not.toContain('<ok>')
 })
 
-test('the card keeps an empty place for a character, and shows no face', async () => {
-  const watch = play('npm test', 'clean')
-  const svg = card(watch, ruling(watch))
+test('the card draws Munch where the place was kept, with the face of the result', async () => {
+  const green = play('npm test', 'clean')
+  const red = play('npm test', 'failed')
+  const grey = play('npm test', 'unknown')
+  const faceOn = (svg: string) => /<g id="munch" data-face="(\w+)" transform="translate\(504 24\) scale\(0\.96\)">/.exec(svg)?.[1]
 
-  expect(svg).toContain('<g id="character"')
-  expect(svg).not.toMatch(/\(\^_\^\)|\(-_-\)|Referee/)
+  expect(faceOn(card(green, ruling(green)))).toBe('pleased')
+  expect(faceOn(card(red, ruling(red)))).toBe('alarmed')
+  expect(faceOn(card(grey, ruling(grey)))).toBe('hungry')
+  // an accepted change is no result: Munch watches
+  expect(faceOn(card(red, ruling(red, { accepted: true })))).toBe('watching')
+  expect(card(green, ruling(green))).not.toMatch(/\(\^_\^\)|\(-_-\)|Referee/)
+})
+
+test('Munch as a picture: one round body, two eyes, a mouth, and teeth in every face', async () => {
+  const faces = ['watching', 'pleased', 'alarmed', 'hungry'] as const
+  const body = (svg: string) => svg.split('\n').slice(0, 2).join('\n')
+
+  for (const face of faces) {
+    const svg = munchSvg(face)
+    expect(body(svg)).toBe(body(munchSvg('watching')))
+    expect(svg).toContain('<ellipse cx="50" cy="54" rx="44" ry="40" fill="#E8812F"/>')
+    expect(svg.match(/data-part="eye"/g)).toHaveLength(2)
+    expect(svg.match(/data-part="mouth"/g)).toHaveLength(1)
+    expect(`${face}: ${svg.includes('data-part="tooth"')}`).toBe(`${face}: true`)
+  }
+  expect(new Set(faces.map(munchSvg)).size).toBe(4)
+  // a big mouth: the open one spans most of the body
+  expect(munchSvg('alarmed').match(/data-part="tooth"/g)?.length ?? 0).toBeGreaterThanOrEqual(8)
 })
 
 test('the card of a run that could not be read says "not checked"', async () => {

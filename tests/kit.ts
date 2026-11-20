@@ -176,10 +176,13 @@ export function world(on: On, opts: World = {}): Seen {
   return seen
 }
 
-/** Every line of text the pane shows now. */
+/** The words among drawn Texts: Munch's face, drawn of blocks, is left out (tests/munch.test.tsx checks it). */
+export const words = (found: readonly { text?: string }[]): string[] => found.map(el => el.text ?? '').filter(text => !/^(?=.*[█▀▄])[ █▀▄]+$/.test(text))
+
+/** Every line of words the pane shows now. */
 export async function paneLines($: Engine): Promise<string[]> {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const lines = (await ui.findAll({ type: 'Text' })).map(el => el.text ?? '')
+  const lines = words(await ui.findAll({ type: 'Text' }))
   await ui.unmount()
 
   return lines

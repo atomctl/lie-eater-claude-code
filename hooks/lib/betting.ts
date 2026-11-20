@@ -1,11 +1,11 @@
 // What happens around a bet in a live session: taking it, the gate that asks
 // for it, and settling it on the run's result. The rules themselves are in
-// bets.ts. The person sees bets only under Details: no toast, no sound.
+// bets.ts. The person sees bets under Details; a lost bet also gets one toast, no sound.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Bet, Terms, ToolRecord } from '../../types'
-import { betText, callBet, closeTurn, gateText, isGated, postBet, settleBet } from './bets'
+import { betText, callBet, closeTurn, gateText, isGated, lostToast, postBet, settleBet } from './bets'
 import { recordBet } from './house'
 import { META_START, SHAPE } from './state'
 import { howRun } from './terms'
@@ -129,6 +129,10 @@ export async function settle($: EngineInterface, r: ToolRecord, before: Terms | 
   }
 
   await recordBet($, done)
+
+  if (done.state === 'lost') {
+    $.ui.toast(lostToast(done))
+  }
 
   return `Lie Eater: bet #${done.id} ${done.state === 'won' ? 'WON' : 'LOST'}. You said ${betText(done)}. The run: ${done.line ?? ''}.${hint}`
 }
