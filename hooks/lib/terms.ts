@@ -43,7 +43,7 @@ const HARMLESS =
 // Where the output goes changes what can be read, not which run it is.
 const OUTPUT_TO = / ?(?:[0-9]|&)?>>? ?(?:&[0-9]|[^\s|;&]+)/g
 
-type Shape = { env: string; words: string[] }
+type Shape = { env: string; where: string; words: string[] }
 
 // One command of a chain (quotes taken out): the values set in front of it, and
 // its words with no runner in front and no harmless flag.
@@ -62,7 +62,10 @@ function shapeOf(part: string): Shape {
     else if (word !== '' && !HARMLESS.test(word)) words.push(word)
   }
 
-  return { env: env.join(' '), words }
+  // The folder a runner is named by (`.venv/bin/pytest`): another folder is another program.
+  const where = (front.match(/\S*\//g) ?? []).join(' ')
+
+  return { env: env.join(' '), where, words }
 }
 
 // The quoted texts of a command: a run that differs from the locked command only inside quotes is another run.
@@ -89,7 +92,9 @@ export function runKind(command: string, verdict: string): 'full' | 'extra' | 'c
 
   const ran = parts[0] as Shape
 
-  return ran.words.length === asked.words.length && ran.env === asked.env && quotes(command) === quotes(verdict) ? 'full' : 'extra'
+  const isSameRunner = asked.where === '' || ran.where === asked.where
+
+  return ran.words.length === asked.words.length && ran.env === asked.env && isSameRunner && quotes(command) === quotes(verdict) ? 'full' : 'extra'
 }
 
 /** How a command runs the full check of this watch (or the test command behind `npm test`). */
@@ -186,7 +191,8 @@ const newest = (records: readonly ToolRecord[], is: (r: ToolRecord) => boolean):
 export function alsoOf(verdict: string, script: string | undefined): string | undefined {
   const viaPackage = /^(npm|pnpm|yarn) test$/.test(bareCommand(verdict))
 
-  return viaPackage && script !== undefined && isAlone(script) && classifyCommand(script) === 'test' ? bareCommand(script) : undefined
+  // The script as it is written: a runner it names by a path stays that runner.
+  return viaPackage && script !== undefined && isAlone(script) && classifyCommand(script) === 'test' ? plainCommand(script) : undefined
 }
 
 /**

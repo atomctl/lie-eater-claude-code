@@ -318,3 +318,16 @@ test('the script shortcut does not hold when the script sets a value through `en
   // a flag with a value is no value set for the run
   expect(packageShortcut('{"scripts":{"test":"vitest run --reporter=dot"}}')).toBe('vitest run --reporter=dot')
 })
+
+// The second rating round (20 Nov, GPT 6.2): a runner named by its path is that runner, not any runner of that name.
+test('a locked command that names its runner by a path is matched with that path', async () => {
+  expect(runKind('.venv/bin/pytest -q', '.venv/bin/pytest')).toBe('full')
+  expect(runKind('pytest', '.venv/bin/pytest')).toBe('extra')
+  expect(runKind('/usr/bin/pytest', '.venv/bin/pytest')).toBe('extra')
+  // a locked command with no path: the runner by any path is that run (the mod cannot know which one is meant)
+  expect(runKind('.venv/bin/pytest', 'pytest')).toBe('full')
+  // the script behind `npm test` keeps its path too
+  expect(alsoOf('npm test', '.venv/bin/pytest')).toBe('.venv/bin/pytest')
+  expect(runKind('pytest', alsoOf('npm test', '.venv/bin/pytest') ?? '')).toBe('extra')
+  expect(alsoOf('npm test', 'vitest run')).toBe('vitest run')
+})

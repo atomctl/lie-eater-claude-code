@@ -208,7 +208,22 @@ test('new check files: test-named files and files in a test folder that are not 
   const was = { files: { 'tests/test_cart.py': { text: 'x' }, 'pyproject.toml': { text: '' } }, unread: ['tests/big.py'] }
   const names = ['cart.py', 'tests/test_cart.py', 'tests/big.py', 'tests/test_tax.py', 'tests/helpers.py', 'src/b.test.ts', 'tests/conftest.py', 'pyproject.toml', 'notes.md']
 
-  // sorted, so that "the first" is always the same file; a helper in a test folder counts
-  expect(newChecks(was, names)).toEqual(['src/b.test.ts', 'tests/helpers.py', 'tests/test_tax.py'])
-  expect(newChecks(was, ['cart.py', 'tests/test_cart.py'])).toEqual([])
+  const now = kept(Object.fromEntries(names.map(name => [name, 'def test_a():\n    assert a\n'])))
+
+  // sorted, so that "the first" is always the same file
+  expect(newChecks(was, names, now)).toEqual(['src/b.test.ts', 'tests/helpers.py', 'tests/test_tax.py'])
+  expect(newChecks(was, ['cart.py', 'tests/test_cart.py'], now)).toEqual([])
+})
+
+// The second rating round (20 Nov, DeepSeek): an empty file, or a helper with no check in it, is no new check.
+test('a new file counts as a new check only when it holds a check', async () => {
+  const was = { files: kept({ [T]: PY }), unread: [] }
+  const names = [T, 'tests/test_empty.py', 'tests/helpers.py', 'tests/test_tax.py', 'src/b.test.ts']
+  const now = kept({
+    'tests/test_empty.py': '',
+    'tests/helpers.py': 'def make_cart():\n    return Cart()\n',
+    'tests/test_tax.py': 'def test_tax():\n    assert tax(100) == 19\n',
+    'src/b.test.ts': "it('b', () => {\n  expect(b()).toBe(1)\n})\n",
+  })
+  expect(newChecks(was, names, now)).toEqual(['src/b.test.ts', 'tests/test_tax.py'])
 })

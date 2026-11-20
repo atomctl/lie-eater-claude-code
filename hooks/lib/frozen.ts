@@ -33,11 +33,19 @@ export const isFrozen = (path: string): boolean => isTestFile(path) || decidesHo
 /**
  * The check files that are new since the watch was armed (or armed again):
  * test-named files and files in a test folder that are in the walk now and
- * not in the frozen set. Decided by name and folder only: a helper or an empty
- * test file counts. Sorted, so that the first named is always the same.
+ * not in the frozen set, that hold a check: a test or an assertion, by the
+ * words every runner uses. An empty file or a helper is no new check. It is a
+ * note on a green result, never what decides one. Sorted, so that the first
+ * named is always the same. `now`: the new files as they were read.
  */
-export const newChecks = (was: Frozen, names: readonly string[]): string[] =>
-  names.filter(name => isTestFile(name) && !decidesHowChecksRun(name) && !(name in was.files) && !was.unread.includes(name)).sort()
+const HOLDS_A_CHECK = /\bassert|\bexpect\s*\(|\bdef test_|\b(?:it|test)\s*(?:\.\w+\s*)*\(|\bfunc Test|#\[test\]|@Test\b|\.should\b/
+
+export const newChecks = (was: Frozen, names: readonly string[], now: Record<string, Kept>): string[] =>
+  names
+    .filter(name => isTestFile(name) && !decidesHowChecksRun(name) && !(name in was.files) && !was.unread.includes(name))
+    // A file too large to keep as text cannot be looked at: it counts.
+    .filter(name => { const kept = now[name]; return kept !== undefined && (!('text' in kept) || HOLDS_A_CHECK.test(kept.text)) })
+    .sort()
 
 // Of a package.json only what decides the checks counts: an added dependency or a `lint` script changes none.
 function checksPart(text: string): string {

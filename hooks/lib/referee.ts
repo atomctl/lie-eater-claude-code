@@ -307,7 +307,7 @@ export async function doneCall($: EngineInterface, input: Record<string, unknown
   const lines = rule(w, seen.changes, seen.walked.print, [...new Set([...was.unread, ...seen.now.unread])])
   const named = typeof input.broken === 'string' ? input.broken : ''
   const worked = hasWorked(w, seen.walked.print)
-  const { result, screen, added } = resultOf(lines, named, worked, newChecks(was, seen.walked.names))
+  const { result, screen, added } = resultOf(lines, named, worked, newChecks(was, seen.walked.names, seen.now.files))
   const earlier = (await read($, rulings)).filter(r => r.termsId === w.id)
   const before = earlier.at(-1)
   const lost = lostOf(seen.changes)

@@ -138,7 +138,7 @@ test('green with only source changed: "no new check", and one plain sentence for
   expect(seen).toMatchObject(quiet)
 })
 
-test('a helper is the only new file in a test folder: it counts as a new check file (by folder, not by what it holds)', async ($, on) => {
+test('a helper is the only new file in a test folder: it holds no check, so it is no new check', async ($, on) => {
   const opts = project()
   const seen = world(on, opts)
   on('tool.call', passing)
@@ -148,8 +148,8 @@ test('a helper is the only new file in a test folder: it counts as a new check f
   addTestFile(opts, 'helpers.ts', 'export const two = 2\n')
   await betRun($, 'npm test')
 
-  expect(String((await done($)).result).split('\n')[2]).toBe('The AI added new checks: tests/helpers.ts.')
-  expect(status(seen)).toBe('Lie Eater ✓ checked')
+  expect(String((await done($)).result).split('\n')[2]).toBe('The AI added no new check for this change.')
+  expect(status(seen)).toBe('Lie Eater ✓ checked · no new check')
 })
 
 test('several new check files: the first by name, and how many more', async ($, on) => {
