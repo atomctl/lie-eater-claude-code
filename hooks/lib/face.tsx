@@ -36,14 +36,17 @@ const toneOf = (line: string): Tone =>
           : 'plain'
 
 /** The referee's part of the pane: who is present, the rules, the newest ruling. */
-export function refereeRows(game: Terms | null, ruling: Ruling | undefined, columns: number): Row[] {
+export function refereeRows(game: Terms | null, ruling: Ruling | undefined, columns: number, number?: number): Row[] {
   if (game === null) {
     return [{ text: VOICE.absent.slice(0, columns), tone: 'quiet' }]
   }
 
   const rows: Row[] = [
     {
-      text: game.state === 'in play' ? `THE REFEREE IS PRESENT · game ${game.id}` : `Last game: ${game.id}`,
+      text:
+        game.state === 'in play'
+          ? `THE REFEREE IS PRESENT${number === undefined ? '' : ` · No. ${number}`} · game ${game.id}`
+          : `Last game: ${game.id}`,
       tone: 'title',
     },
     ...termsText(game).map((text): Row => ({ text, tone: 'plain' })),

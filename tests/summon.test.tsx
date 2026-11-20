@@ -27,7 +27,7 @@ test('/summon locks the rules, opens the pane and plays the sound', async ($, on
   expect(out.text).toContain('1. The tests must really pass (npm test)')
   expect(out.text).toContain('The game ends by itself when the rules are kept. /rule ends it now.')
   expect(seen).toMatchObject({ opens: 1, sounds: 1, toasts: ['The referee is present. The rules are locked.'] })
-  expect(seen.status.at(-1)).toBe('Referee present')
+  expect(seen.status.at(-1)).toContain('Referee present')
 
   const lines = await paneLines($)
   expect(has(lines, 'THE REFEREE IS PRESENT')).toBe(true)
@@ -121,7 +121,7 @@ test('said done with the rules kept: the game ends by itself', async ($, on) => 
   expect(has(lines, 'The rules were kept. The game is over.')).toBe(true)
   expect(has(lines, 'Last game: 1')).toBe(true)
   expect(seen.toasts.at(-1)).toBe('RULES KEPT')
-  expect(seen.status.at(-1)).toBeUndefined()
+  expect(seen.status.at(-1)).not.toMatch(/present|debt/)
   expect((await run($, 'summon', 'npm test')).text).toContain('The referee is present.')
 })
 
@@ -196,7 +196,7 @@ test('/rule ends the game now', async ($, on) => {
   expect(out.text?.split('\n').at(-3)).toBe('VERDICT: RULES BROKEN. Debt 0 → 1.')
   expect(out.text?.split('\n').at(-1)).toBe('Receipts: .lie-eater/receipts.json')
   expect(out.text).toContain('✗ The tests fail')
-  expect(seen.status.at(-1)).toBe('Lie Eater · debt 1')
+  expect(seen.status.at(-1)).toMatch(/^\(-_-\) Referee.* · debt 1$/)
   expect(has(await paneLines($), 'The rules were broken. The house collects.')).toBe(true)
   expect((await run($, 'rule')).text).toBe('No referee is present. Type /summon to call one.')
 })
@@ -227,7 +227,7 @@ test('a reload in the middle of a game keeps the referee', async ($, on) => {
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await betRun($, 'npm test', 'fail')
 
-  expect(seen.status.at(-1)).toBe('Referee present · bets 1/1')
+  expect(seen.status.at(-1)).toContain('Referee present · bets 1/1')
   expect((await run($, 'rule')).text).toContain('npm test, call 1')
 })
 
@@ -340,7 +340,7 @@ test('a summon does not wait for the sound, and works with no surface for the pa
   const out = await run($, 'summon', 'npm test')
 
   expect(out.text).toContain('The referee is present. The rules are locked.')
-  expect(seen.status.at(-1)).toBe('Referee present')
+  expect(seen.status.at(-1)).toContain('Referee present')
   finishSound()
 })
 

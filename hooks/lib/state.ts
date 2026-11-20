@@ -21,6 +21,7 @@ export const META_START: Meta = {
 export const SHAPE = {
   records: 'records-1',
   terms: 'terms-1',
+  watch: 'watch-1',
   rulings: 'rulings-1',
   bets: 'bets-1',
   ledger: 'ledger-1',

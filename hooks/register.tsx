@@ -4,7 +4,7 @@ import { BET_DESCRIPTION, BET_SCHEMA, BET_TOOL, BET_TOOL_FULL, betText } from '.
 import { closeBets, openBet, refuseRun, settle, takeBet } from './lib/betting'
 import { betRows, canFix, diceFace, houseRows, recordHeader, recordRows, refereeRows, scoreLines } from './lib/face'
 import type { Tone } from './lib/face'
-import { loadLedger, overruleCmd } from './lib/house'
+import { loadLedger, overruleCmd, refreshStatus } from './lib/house'
 import { PANE, explainCmd, fix, onRecord, ruleNow, ruleTurn, summonCmd } from './lib/referee'
 import { paneView, remember, startTurn } from './lib/store'
 
@@ -43,7 +43,7 @@ export const register: Register = on => {
 
     // What the house remembers about this repository, and the status line
     // (after a reload in the middle of a game the referee is still present).
-    await loadLedger($)
+    await loadLedger($, e.cwd)
 
     return next(e)
   })
@@ -91,6 +91,8 @@ export const register: Register = on => {
 
       if (made !== undefined) {
         const line = await settle($, made, await onRecord($, made))
+        // The flag and the referee's face follow every call.
+        await refreshStatus($)
 
         if (line !== undefined) {
           return { ...ran, context: [...(ran.context ?? []), line] }
@@ -130,13 +132,13 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const columns = e.props.bodyColumns
-    const { game, ruling, list, bets, unbet, ledger, note } = await paneView($)
+    const { game, ruling, list, bets, unbet, ledger, referee, note } = await paneView($)
     const room = game === null ? Math.max(1, (e.viewport?.rows ?? 24) - 4) : 5
 
     return (
       <Box flexDirection="column">
         {note !== undefined && <Text dimColor>{note.slice(0, columns)}</Text>}
-        {refereeRows(game, ruling, columns).map(row => (
+        {refereeRows(game, ruling, columns, referee).map(row => (
           <Text {...TONE[row.tone]}>{row.text}</Text>
         ))}
         {canFix(game, ruling) && (

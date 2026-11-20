@@ -6,6 +6,7 @@ import type { EngineInterface } from 'claude-code'
 
 import type { Bet, Ledger, RulingLine, Terms } from '../../types'
 import { score } from './bets'
+import { flagOf, gitRemote, moodOf, refereeNumber, statusLine } from './flag'
 import {
   EMPTY_LEDGER,
   LEDGER_PATH,
@@ -20,12 +21,16 @@ import {
   parseLedger,
   repay,
 } from './ledger'
+import { projectFiles, projectNames } from './project'
 import { RECEIPTS_JSON, RECEIPTS_MD, buildReceipt, receiptToMarkdown } from './receipts'
 import { META_START, SHAPE } from './state'
+import { detectVerdict, packageTestScript, summon } from './terms'
 import { VOICE } from './words'
 
 // Each file that touches state declares its own atoms (see state.ts).
+const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
 const terms = atom({ plugin: 'lie-eater', key: 'terms' } as const, null, { shape: SHAPE.terms })
+const watch = atom({ plugin: 'lie-eater', key: 'watch' } as const, null, { shape: SHAPE.watch })
 const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SHAPE.bets })
 const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { shape: SHAPE.rulings })
 const ledger = atom({ plugin: 'lie-eater', key: 'ledger' } as const, EMPTY_LEDGER, { shape: SHAPE.ledger })
@@ -51,25 +56,47 @@ async function change($: EngineInterface, fn: (l: Ledger) => Ledger): Promise<Le
   return next
 }
 
-/** One pinned line: who is present, the bets of this session, the open debt. */
+/**
+ * The one pinned line: the referee's face and number, whether a game is in
+ * play and its bets, the flag, the open debt.
+ */
 export async function refreshStatus($: EngineInterface): Promise<void> {
-  const debt = openDebt(await read($, ledger)).length
-  const debtPart = debt === 0 ? [] : [`debt ${debt}`]
-
-  if ((await read($, terms))?.state !== 'in play') {
-    $.ui.status(debt === 0 ? undefined : ['Lie Eater', ...debtPart].join(' · '))
-
-    return
-  }
-
-  const settled = (await read($, bets)).filter(b => b.state === 'won' || b.state === 'lost')
+  const game = await read($, terms)
+  const present = game?.state === 'in play'
+  const all = await read($, bets)
+  const rulingsNow = await read($, rulings)
+  const lastOfGame = present ? rulingsNow.findLast(r => r.termsId === game.id) : undefined
+  const last = rulingsNow.at(-1)
+  const settled = all.filter(b => b.state === 'won' || b.state === 'lost')
   const s = score(settled.map(b => ({ confidence: b.confidence, won: b.state === 'won' })))
+  const flag = flagOf(await read($, watch))
+  const debt = openDebt(await read($, ledger)).length
+  const number = (await read($, meta)).referee
 
-  $.ui.status(['Referee present', ...(s === undefined ? [] : [`bets ${s.won}/${s.n}`]), ...debtPart].join(' · '))
+  $.ui.status(
+    statusLine({
+      mood: moodOf({
+        hasOpenBet: all.some(b => b.state === 'open'),
+        isBroken: lastOfGame !== undefined && !lastOfGame.met && lastOfGame.overruled !== true,
+        isKept: last !== undefined && last.final && last.met,
+        ...(flag === undefined ? {} : { flag }),
+        debt,
+      }),
+      ...(number === undefined ? {} : { number }),
+      present,
+      ...(s === undefined ? {} : { bets: { won: s.won, n: s.n } }),
+      ...(flag === undefined ? {} : { flag }),
+      debt,
+    }),
+  )
 }
 
-/** At the start of a session the ledger file is the truth. */
-export async function loadLedger($: EngineInterface): Promise<void> {
+/**
+ * The start of a session: the ledger file is the truth; the repository's
+ * referee gets his number; and the watch starts when the project's test
+ * command can be found, so the flag works with no summon.
+ */
+export async function loadLedger($: EngineInterface, cwd = ''): Promise<void> {
   const text = await $.fs.read(LEDGER_PATH).catch(() => undefined)
 
   // A file this version cannot read (a newer version, a merge conflict) is the
@@ -84,6 +111,21 @@ export async function loadLedger($: EngineInterface): Promise<void> {
 
   if (debt > 0 && (await read($, terms))?.state !== 'in play') {
     $.ui.toast(`${VOICE.remembers} Debt: ${debt}.`)
+  }
+
+  const remote = gitRemote(await $.fs.read('.git/config').catch(() => undefined))
+  const number = refereeNumber(remote ?? cwd.split('/').filter(part => part !== '').at(-1) ?? '')
+  await update($, meta, m => ({ ...m, ...(number === undefined ? {} : { referee: number }) }))
+
+  if ((await read($, watch)) === null) {
+    const files = await projectFiles($)
+    const verdict = detectVerdict(files, await projectNames($))
+
+    if (verdict !== undefined) {
+      const at = await $.clock.now()
+      const seenSoFar = await read($, records)
+      await update($, watch, () => summon(verdict, { id: 0, at }, seenSoFar, packageTestScript(files['package.json'])))
+    }
   }
 
   await refreshStatus($)

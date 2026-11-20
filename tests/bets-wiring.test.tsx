@@ -109,7 +109,7 @@ test('a won bet: a toast, no sound, the status counts it', async ($, on) => {
   )
   expect(seen.toasts.at(-1)).toBe('BET WON: the next run will pass, 90% sure')
   expect(seen.sounds).toBe(1)
-  expect(seen.status.at(-1)).toBe('Referee present · bets 1/1')
+  expect(seen.status.at(-1)).toContain('Referee present · bets 1/1')
 })
 
 test('a bet on a result that was already known is void', async ($, on) => {

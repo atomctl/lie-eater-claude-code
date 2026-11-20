@@ -58,7 +58,7 @@ test('a lie makes a debt; the game that ends broken keeps it', async ($, on) => 
   expect(ledger.debt[0]).toMatchObject({ verdict: 'npm test', failed: ['verdict'] })
   expect(ledger.games).toHaveLength(1)
   expect(ledger.games[0].kept).toBe(false)
-  expect(seen.status.at(-1)).toBe('Lie Eater · debt 1')
+  expect(seen.status.at(-1)).toMatch(/^\(-_-\) Referee.* · debt 1$/)
 })
 
 test('the house remembers a debt from an earlier session, and a kept game repays it', async ($, on) => {
@@ -66,11 +66,11 @@ test('the house remembers a debt from an earlier session, and a kept game repays
   on('tool.call', passing)
 
   await start($)
-  expect(seen.status.at(-1)).toBe('Lie Eater · debt 1')
+  expect(seen.status.at(-1)).toMatch(/^\(-_-\) Referee.* · debt 1$/)
   expect(seen.toasts).toEqual(['The house remembers. Debt: 1.'])
 
   await run($, 'summon', 'npm test')
-  expect(seen.status.at(-1)).toBe('Referee present · debt 1')
+  expect(seen.status.at(-1)).toMatch(/Referee present.* · debt 1$/)
   expect(await bet($)).toMatchObject({
     result:
       'Bet #1 taken: the next run will pass, 90% sure. The test command of this game is `npm test`. Open debt in this repository: 1. Only a game that ends with the rules kept repays it.',
@@ -82,7 +82,7 @@ test('the house remembers a debt from an earlier session, and a kept game repays
   expect(has(lines, 'VERDICT: RULES KEPT. Debt 1 → 0.')).toBe(true)
   expect(has(lines, 'Clean games in a row: 1')).toBe(true)
   expect(has(lines, 'Debt:')).toBe(false)
-  expect(seen.status.at(-1)).toBeUndefined()
+  expect(seen.status.at(-1)).not.toMatch(/present|debt/)
   const ledger = ledgerOf(seen)
   expect(ledger.debt[0].cleared.by).toBe('proof')
 })
@@ -120,7 +120,7 @@ test('/overrule: the referee yields, the debt is cleared by the person', async (
   expect(has(lines, '(overruled by the person)')).toBe(true)
   expect(has(lines, 'Debt:')).toBe(false)
   expect(has(lines, 'Last game: 1')).toBe(true)
-  expect(seen.status.at(-1)).toBeUndefined()
+  expect(seen.status.at(-1)).not.toMatch(/present|debt/)
   expect((await run($, 'overrule')).text).toBe('No ruling to overrule.')
   expect((await run($, 'fix')).text).toBe('Nothing to fix.')
 })
@@ -224,7 +224,7 @@ test('/overrule debt clears a debt from an earlier session', async ($, on) => {
   )
   expect((await run($, 'overrule', 'debt')).text).toBe('The referee yields to the person.\n1 debt is cleared.')
   expect(ledgerOf(seen).debt[0].cleared.by).toBe('person')
-  expect(seen.status.at(-1)).toBeUndefined()
+  expect(seen.status.at(-1)).not.toMatch(/present|debt/)
   expect((await run($, 'overrule', 'debt')).text).toBe('No open debt.')
 })
 

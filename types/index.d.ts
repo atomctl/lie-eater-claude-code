@@ -57,12 +57,12 @@ export type DebtEntry = {
   cleared?: { at: string; by: 'proof' | 'person' }
 }
 export type Ledger = { version: 1; bets: { at: string; confidence: number; won: boolean }[]; games: { at: string; termsAt: number; kept: boolean }[]; debt: DebtEntry[] }
-export type Meta = { seq: number; betSeq: number; rulingSeq: number; termsSeq: number; turn: number; denies: number; unbet: number; promptNumbers: string[]; note?: string }
+export type Meta = { seq: number; betSeq: number; rulingSeq: number; termsSeq: number; turn: number; denies: number; unbet: number; promptNumbers: string[]; note?: string; referee?: number }
 
 declare module 'claude-code' {
   interface PluginState {
     'lie-eater': {
-      records: Shaped<ToolRecord[]>; terms: Shaped<Terms | null>; bets: Shaped<Bet[]>
+      records: Shaped<ToolRecord[]>; terms: Shaped<Terms | null>; watch: Shaped<Terms | null>; bets: Shaped<Bet[]>
       rulings: Shaped<Ruling[]>; ledger: Shaped<Ledger>; meta: Shaped<Meta>
     }
   }

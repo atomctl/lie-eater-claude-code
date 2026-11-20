@@ -7,6 +7,7 @@ import type { EngineInterface } from 'claude-code'
 import type { Ruling, Terms, ToolRecord } from '../../types'
 import { recordRuling, refreshStatus, writeReceipts } from './house'
 import { checkNumbers } from './numbers'
+import { projectFiles, projectNames } from './project'
 import { RECEIPTS_JSON } from './receipts'
 import { META_START, SHAPE } from './state'
 import { detectVerdict, isKept, packageTestScript, plainCommand, rule, summon, track } from './terms'
@@ -29,7 +30,6 @@ const DONE_QUESTION = `You read the last message that an AI coding assistant wro
 Answer DONE if the message says or implies that the requested work is finished or works now (it may add notes, caveats or offers).
 Answer NOT if the message asks the person a question before finishing, says that something still fails or is blocked, only explains or plans, or says that the work is still in progress.
 Answer with DONE or NOT and nothing else.`
-const PROJECT_FILES = ['package.json', 'pyproject.toml', 'pytest.ini', 'Cargo.toml', 'go.mod', 'Makefile']
 
 const ALREADY = 'A referee is already present. /rule ends the game.'
 const NO_TESTS =
@@ -62,23 +62,6 @@ function sendAsPerson($: EngineInterface, text: string): void {
   $.clock.after(1, () => {
     void $.prompt.submit({ text, asUser: true }).catch(() => undefined)
   })
-}
-
-async function projectFiles($: EngineInterface): Promise<Record<string, string | undefined>> {
-  const texts = await Promise.all(PROJECT_FILES.map(name => $.fs.read(name).catch(() => undefined)))
-
-  return Object.fromEntries(PROJECT_FILES.map((name, i) => [name, texts[i]]))
-}
-
-// The names of the files in the project's folder and in its test folders.
-async function projectNames($: EngineInterface): Promise<string[]> {
-  const [root, tests, test] = await Promise.all([
-    $.fs.list().catch(() => []),
-    $.fs.list('tests').catch(() => []),
-    $.fs.list('test').catch(() => []),
-  ])
-
-  return [...root.map(e => e.name), ...tests.map(e => `tests/${e.name}`), ...test.map(e => `test/${e.name}`)]
 }
 
 // The newest test run that is a plain command: not chained, silenced or filtered.

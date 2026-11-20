@@ -7,10 +7,12 @@ import type { Bet, Ledger, Ruling, Terms, ToolRecord } from '../../types'
 import { appendRecord, nextMeta, toRawCall } from './intake'
 import { EMPTY_LEDGER } from './ledger'
 import { META_START, SHAPE } from './state'
+import { plainCommand, summon, track } from './terms'
 
 const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
 const terms = atom({ plugin: 'lie-eater', key: 'terms' } as const, null, { shape: SHAPE.terms })
 const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { shape: SHAPE.rulings })
+const watch = atom({ plugin: 'lie-eater', key: 'watch' } as const, null, { shape: SHAPE.watch })
 const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SHAPE.bets })
 const ledger = atom({ plugin: 'lie-eater', key: 'ledger' } as const, EMPTY_LEDGER, { shape: SHAPE.ledger })
 const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
@@ -33,7 +35,20 @@ export async function remember(
     return next
   })
 
-  return made
+  const r = made as ToolRecord | undefined
+
+  if (r !== undefined) {
+    await update($, watch, w => (w === null ? watchFrom(r) : track(w, r)))
+  }
+
+  return r
+}
+
+// With no config file to read, the first plain test run names the test command.
+function watchFrom(r: ToolRecord): Terms | null {
+  const command = plainCommand(r.target)
+
+  return r.kind === 'test' && !/[|;&]/.test(command) ? track(summon(command, { id: 0, at: r.at }, []), r) : null
 }
 
 /** A new prompt starts a turn. `isOwn` marks a prompt this mod sent itself. */
@@ -48,6 +63,7 @@ export type PaneView = {
   bets: readonly Bet[]
   unbet: number
   ledger: Ledger
+  referee: number | undefined
   note: string | undefined
 }
 
@@ -56,7 +72,7 @@ export async function paneView($: EngineInterface): Promise<PaneView> {
   const game = await read($, terms)
   const all = await read($, rulings)
 
-  const { note, unbet } = await read($, meta)
+  const { note, unbet, referee } = await read($, meta)
 
   return {
     game,
@@ -65,6 +81,7 @@ export async function paneView($: EngineInterface): Promise<PaneView> {
     bets: await read($, bets),
     unbet,
     ledger: await read($, ledger),
+    referee,
     note,
   }
 }

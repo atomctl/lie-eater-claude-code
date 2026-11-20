@@ -57,6 +57,7 @@ export async function takeBet($: EngineInterface, input: unknown): Promise<strin
   if (isTaken) {
     await update($, meta, m => ({ ...m, betSeq: betSeq + 1 }))
     rollDice($)
+    await refreshStatus($)
 
     // A mod cannot add to the system prompt: the bet's reply is where the agent
     // hears which command is the test run, and of the debt.
@@ -147,6 +148,7 @@ export async function settle($: EngineInterface, r: ToolRecord, before: Terms | 
 export async function closeBets($: EngineInterface): Promise<void> {
   await update($, bets, list => (list.some(b => b.state === 'open') ? closeTurn(list) : list))
   stopDice()
+  await refreshStatus($)
 }
 
 export async function openBet($: EngineInterface): Promise<Bet | undefined> {
