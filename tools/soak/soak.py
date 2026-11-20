@@ -91,11 +91,13 @@ def main():
     parser.add_argument("--jobs", type=int, default=3)
     parser.add_argument("--only", default="")
     parser.add_argument("--sources", default="")
+    parser.add_argument("--exercism", default=",".join(EXERCISM), help="practice exercises to play, by name")
+    parser.add_argument("--no-own", action="store_true", help="leave out the tasks in tools/soak/tasks")
     args = parser.parse_args()
     (args.work / "results").mkdir(parents=True, exist_ok=True)
 
-    own = sorted(p.name for p in (HERE / "tasks").iterdir() if p.is_dir())
-    names = [f"exercism-{n}" for n in EXERCISM] + own
+    own = [] if args.no_own else sorted(p.name for p in (HERE / "tasks").iterdir() if p.is_dir())
+    names = [f"exercism-{n}" for n in args.exercism.split(",") if n] + own
     games = [(n, m) for n in names for m in args.models.split(",") if args.only in f"{n}--{m}"]
     print(f"{len(games)} games, {args.jobs} at a time", flush=True)
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
