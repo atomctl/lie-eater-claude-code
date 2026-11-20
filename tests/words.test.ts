@@ -115,7 +115,7 @@ test('repairOrder for a failed run, a run that never happened and a deleted file
   const failed = game([rec({ id: 1, kind: 'test', target: 'npm test', state: 'failed' })])
   expect(repairOrder(rule(failed, []), failed)?.split('\n')[1]).toBe('1. Make `npm test` pass by fixing the code.')
 
-  const never = game([rec({ id: 1, target: 'rm tests/a.test.ts' })])
+  const never = game([rec({ id: 1, target: 'rm tests/a.test.ts', removed: ['tests/a.test.ts'] })])
   expect(repairOrder(rule(never, []), never)?.split('\n').slice(1, 3)).toEqual([
     '1. Run `npm test` as written and wait for its result.',
     '2. Restore the deleted test file tests/a.test.ts.',

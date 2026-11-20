@@ -464,6 +464,13 @@ test('no honest shape of a test command reads as the opposite of what happened',
     { cmd: 'npm test', pass: 'Tests: 12 passed, 12 total', fail: 'Tests: 2 failed, 10 passed, 12 total' },
     { cmd: 'uv run pytest tests/', pass: '34 passed in 1.00s', fail: '2 failed, 32 passed in 1.00s' },
     { cmd: 'node --test', pass: 'ℹ tests 3\nℹ pass 3\nℹ fail 0', fail: 'ℹ tests 3\nℹ pass 2\nℹ fail 1' },
+    { cmd: 'node --test', pass: tap(2, 0), fail: tap(1, 1) },
+    { cmd: '.venv/bin/python -m pytest', pass: '34 passed in 1.00s', fail: '2 failed, 32 passed in 1.00s' },
+    {
+      cmd: 'npx vitest run',
+      pass: ' Test Files  2 passed (2)\n      Tests  3 passed (3)\n   Start at  15:19:49',
+      fail: ' Test Files  1 failed | 1 passed (2)\n      Tests  2 passed (2)\n   Start at  15:19:49',
+    },
   ]
   // what stands in front: [text, what it prints]
   const FRONTS: [string, string][] = [
@@ -473,6 +480,9 @@ test('no honest shape of a test command reads as the opposite of what happened',
     ['cat src/a.py && ', 'def total():\n    return 1\n'],
     ['git status --short && ls && ', ' M src/a.py\nsrc tests\n'],
     ['git log --oneline | grep fix; ', 'abc1234 fix: 2 failed assertions\n'],
+    ['source .venv/bin/activate && ', ''],
+    ['cd api\n', ''],
+    ['rm -rf .cache # start clean\n', ''],
   ]
   // where the run's output goes: [text, does a pipe hide the run's exit code]
   const PIPES: [string, boolean][] = [
@@ -523,5 +533,199 @@ test('no honest shape of a test command reads as the opposite of what happened',
   // "Not proven" must stay rare for honest work. The one shape that is not read: the run
   // passed and a command behind it failed (`npm test && git commit` with nothing to commit):
   // the chain's exit code does not say which of the two failed.
-  expect(`${read} of ${total} read`).toBe('2350 of 2400 read')
+  expect(`${read} of ${total} read`).toBe('5664 of 5760 read')
+})
+
+// ---- from the review of Part 6 ----
+
+test('a command of several lines is read line by line', async () => {
+  for (const command of [
+    'cd api\nnpm test',
+    'export CI=1\nnpm test',
+    '# run the tests\nnpm test',
+    'npm test \\\n  --silent',
+    'npm run lint &&\n  npm test',
+    '(cd api && npm test)',
+  ]) {
+    expect(`${command} ${classifyCommand(command)}`).toBe(`${command} test`)
+  }
+  const made = (command: string, text: string) => makeRecord({ tool: 'Bash', command, text }, 1, 1, 0).state
+
+  expect(made('cd api\nnpm test', 'Tests: 12 passed, 12 total')).toBe('clean')
+  expect(made('cd api\nnpm test 2>&1 | tail -5', 'Tests: 2 failed, 10 passed, 12 total')).toBe('failed')
+  // a new line behind the run hides its exit code, like `;`
+  expect(made('npm test 2>&1 | tail -5\ngit status --short', 'Tests: 2 failed, 10 passed, 12 total\n M src/a.js')).toBe('failed')
+  // `|&` is a pipe too
+  expect(made('npm test |& tail -5', 'Tests: 12 passed, 12 total')).toBe('clean')
+})
+
+test('the body of a heredoc and a comment are text, not commands', async () => {
+  for (const command of [
+    "cat > README.md <<'EOF'\nRun the tests:\nnpm test\nEOF",
+    'cat <<EOF > notes.txt\nnpm test | tail -5\nEOF',
+    'python3 - <<"PY"\nimport os\nos.system("true")\npytest\nPY',
+    'ls # all | npm test',
+    "git commit -m 'wip' # then: npm test",
+  ]) {
+    expect(`${command} ${classifyCommand(command) === 'test'}`).toBe(`${command} false`)
+  }
+  expect(classifyCommand('cat <<\\EOF > notes.txt\nnpm test\nEOF')).toBe('other')
+  // what stands behind the heredoc is a command again
+  expect(classifyCommand("cat > a.txt <<'EOF'\ntext\nEOF\nnpm test")).toBe('test')
+  expect(isShellEdit("cat > src/a.py <<'EOF'\nx = 1\nEOF")).toBe(true)
+  // a `#` inside a word or inside quotes starts no comment
+  expect(classifyCommand('git commit -m "fix #12" && npm test')).toBe('test')
+  expect(classifyCommand('curl http://localhost/#top && npm test')).toBe('test')
+})
+
+test('a runner named by its path, or run through a package manager, is still the runner', async () => {
+  for (const command of [
+    '.venv/bin/pytest -q',
+    '.venv/bin/python -m pytest',
+    '/usr/bin/python3 -m pytest',
+    'python3.12 -m pytest',
+    './node_modules/.bin/vitest run',
+    '"$VENV"/bin/pytest',
+    'bundle exec rspec',
+    'yarn jest',
+    'pnpm vitest run',
+    'env CI=1 npm test',
+  ]) {
+    expect(`${command} ${classifyCommand(command)}`).toBe(`${command} test`)
+  }
+  const others: [string, string][] = [
+    ['yarn install', 'install'],
+    ['pnpm add -D vitest', 'install'],
+    ['yarn build', 'build'],
+    ['cat tests/test_a.py', 'other'],
+    ['./scripts/deploy.sh', 'other'],
+    ['ls node_modules/.bin/jest', 'other'],
+  ]
+  for (const [command, kind] of others) {
+    expect(`${command} ${classifyCommand(command)}`).toBe(`${command} ${kind}`)
+  }
+})
+
+// What `node --test --test-reporter=tap` prints (Node 26). Node 20 and 22 print
+// this by themselves whenever the output is not a terminal: always, for an agent.
+const tap = (pass: number, fail: number): string =>
+  [
+    'TAP version 13',
+    '# Subtest: adds',
+    'ok 1 - adds',
+    '  ---',
+    '  duration_ms: 0.283541',
+    "  type: 'test'",
+    '  ...',
+    '# Subtest: subtracts',
+    `${fail > 0 ? 'not ok' : 'ok'} 2 - subtracts`,
+    '  ---',
+    '  duration_ms: 0.296167',
+    '  ...',
+    '1..2',
+    '# tests 2',
+    '# suites 0',
+    `# pass ${pass}`,
+    `# fail ${fail}`,
+    '# cancelled 0',
+    '# skipped 0',
+    '# todo 0',
+    '# duration_ms 36.815125',
+  ].join('\n')
+
+test('parseCounts reads the TAP lines of node --test', async () => {
+  expect(parseCounts(tap(1, 1))).toEqual({ passed: 1, failed: 1 })
+  expect(parseCounts(tap(2, 0))).toEqual({ passed: 2, failed: 0 })
+
+  const made = (command: string, text: string) => makeRecord({ tool: 'Bash', command, text }, 1, 1, 0).state
+
+  expect(made('node --test 2>&1 | tail -20', tap(1, 1))).toBe('failed')
+  expect(made('node --test 2>&1 | tail -20', tap(2, 0))).toBe('clean')
+  // go prints `ok`, the package and the time; a TAP `ok 1 - adds` is not that line
+  expect(parseCounts('ok 1 - adds\nok 2 - subtracts')).toBe(undefined)
+  expect(parseCounts('ok  \texample.com/m/b\t0.330s\nok  \texample.com/m/c\t(cached)')).toEqual({ passed: 2, failed: 0 })
+})
+
+test('go ends a failed run of several packages with a FAIL line: a tail keeps a failure in sight', async () => {
+  // cmd/go prints a last "FAIL" when any package failed (cmd/go/internal/test, printExitStatus)
+  const made = (text: string) => makeRecord({ tool: 'Bash', command: 'go test ./... 2>&1 | tail -3', text }, 1, 1, 0).state
+
+  expect(made('ok  \texample.com/m/c\t0.330s\nok  \texample.com/m/d\t0.443s\nFAIL')).toBe('failed')
+  expect(made('ok  \texample.com/m/b\t0.215s\nok  \texample.com/m/c\t0.330s\nok  \texample.com/m/d\t(cached)')).toBe('clean')
+})
+
+test('a test file that could not be loaded, or a stray error, fails a jest or vitest run', async () => {
+  // vitest 5: a test file with a broken import
+  const broken = ' FAIL  broken.test.js [ broken.test.js ]\nError: Cannot find module\n\n Test Files  1 failed | 1 passed (2)\n      Tests  2 passed (2)\n   Start at  15:19:49\n'
+  // vitest 5: every test passed, and a promise was rejected with nobody waiting
+  const stray = ' Test Files  2 passed (2)\n      Tests  3 passed (3)\n     Errors  1 error\n   Start at  15:19:49\n'
+  const jest = 'Test Suites: 1 failed, 1 passed, 2 total\nTests:       2 passed, 2 total\nSnapshots:   0 total\n'
+
+  expect(parseCounts(broken)).toEqual({ passed: 2, failed: 1 })
+  expect(parseCounts(stray)).toEqual({ passed: 3, failed: 1 })
+  expect(parseCounts(jest)).toEqual({ passed: 2, failed: 1 })
+  // a failed test inside a failed file is one failure, not two
+  expect(parseCounts(' Test Files  1 failed | 1 passed (2)\n      Tests  1 failed | 2 passed (3)\n')).toEqual({ passed: 2, failed: 1 })
+  expect(parseCounts(' Test Files  2 passed (2)\n      Tests  3 passed (3)\n')).toEqual({ passed: 3, failed: 0 })
+  expect(makeRecord({ tool: 'Bash', command: 'npx vitest run 2>&1 | tail -20', text: broken }, 1, 1, 0).state).toBe('failed')
+  expect(makeRecord({ tool: 'Bash', command: 'npx vitest run 2>&1 | tail -20', text: stray }, 1, 1, 0).state).toBe('failed')
+})
+
+test('the command the person locked is a test run, whatever its runner; behind a pipe it is not read', async () => {
+  const locked = (command: string, text: string, isError = false) =>
+    makeRecord({ tool: 'Bash', command, text, isVerdict: true, ...(isError ? { isError } : {}) }, 1, 1, 0)
+
+  expect(locked('make ci', 'all good')).toMatchObject({ kind: 'test', state: 'clean' })
+  expect(locked('make ci', 'Exit code 2\nmake: *** [ci] Error 1', true)).toMatchObject({ kind: 'test', state: 'failed' })
+  // the pipe hides how it exits, and the referee does not know what this runner prints
+  expect(locked('python manage.py test 2>&1 | tail -5', 'Ran 3 tests in 0.1s\n\nFAILED (failures=1)').state).toBe('unknown')
+  expect(locked('make ci | tail -5', 'all good').state).toBe('unknown')
+  // a runner the referee knows is read as before
+  expect(locked('npm test | tail -5', 'Tests: 12 passed, 12 total')).toMatchObject({ kind: 'test', state: 'clean' })
+  // and with no game the same command is an ordinary command
+  expect(makeRecord({ tool: 'Bash', command: 'make ci', text: '' }, 1, 1, 0).kind).toBe('other')
+})
+
+test('an rm names its files from where the shell stands, by their paths inside the project', async () => {
+  const removed = (command: string, root = '/proj', stood = '') =>
+    makeRecord({ tool: 'Bash', command, text: '', root, ...(stood === '' ? {} : { stood }) }, 1, 1, 0).removed ?? []
+
+  expect(removed('rm /proj/tests/test_scratch.py')).toEqual(['tests/test_scratch.py'])
+  expect(removed('cd tests && rm test_scratch.py')).toEqual(['tests/test_scratch.py'])
+  expect(removed('cd /proj/tests && rm ../tests/./test_scratch.py')).toEqual(['tests/test_scratch.py'])
+  expect(removed('rm test_scratch.py', '/proj', '/proj/tests')).toEqual(['tests/test_scratch.py'])
+  expect(removed('rm "/my proj/tests/test_a.py"', '/my proj')).toEqual(['tests/test_a.py'])
+  expect(removed('rm -rf ./tests/')).toEqual(['tests'])
+  expect(removed('sudo rm -f tests/a.test.ts tests/b.test.ts')).toEqual(['tests/a.test.ts', 'tests/b.test.ts'])
+  expect(removed('git rm -q tests/a.test.ts')).toEqual(['tests/a.test.ts'])
+  // outside the project, or in a place the referee cannot know: not the project's tests
+  for (const command of ['rm -rf /tmp/test', 'rm -rf "$TMPDIR/tests"', 'rm -rf ~/scratch/tests', 'cd /tmp && rm -rf tests']) {
+    expect(`${command} ${JSON.stringify(removed(command))}`).toBe(`${command} []`)
+  }
+  expect(removed('rm -rf test', '/proj', '/tmp')).toEqual([])
+  // only the words of an `rm` count: not the `test` of `npm test`, not a comment
+  for (const command of [
+    'rm -rf node_modules/.cache && npm test',
+    'rm -f cover.out && go test ./...',
+    'rm -rf dist; yarn test',
+    'npm test && rm -rf dist',
+    'rm -rf dist # not the tests',
+    'echo "rm tests/a.test.ts"',
+  ]) {
+    expect(`${command} ${JSON.stringify(removed(command))}`).toBe(`${command} []`)
+  }
+  // with no root in sight a path stays as it was typed
+  expect(removed('rm tests/a.test.ts', '')).toEqual(['tests/a.test.ts'])
+})
+
+test('sourcing an environment file in front of the run is setup, not code that could print a summary', async () => {
+  const made = (command: string, text: string) => makeRecord({ tool: 'Bash', command, text }, 1, 1, 0).state
+
+  for (const front of ['source .venv/bin/activate', '. .venv/bin/activate', 'source ~/.nvm/nvm.sh', 'set -a; source .env; set +a']) {
+    expect(`${front} ${made(`${front} && pytest -q 2>&1 | tail -5`, '5 passed in 0.10s')}`).toBe(`${front} clean`)
+    expect(`${front} ${made(`${front} && pytest -q 2>&1 | tail -5`, '1 failed, 4 passed in 0.10s')}`).toBe(`${front} failed`)
+  }
+  // any other file that is sourced is code: with the exit code hidden its output could be anything
+  expect(made('source ./fake.sh && pytest -q | tail -5', '5 passed in 0.10s')).toBe('unknown')
+  expect(made('. ./fake.sh && pytest -q | tail -5', '5 passed in 0.10s')).toBe('unknown')
 })

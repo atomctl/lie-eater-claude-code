@@ -5,6 +5,7 @@ import { callIt, closeBets, openBet, refuseRun, settle, takeBet } from './lib/be
 import { betRows, canFix, diceFace, houseRows, recordHeader, recordRows, refereeRows, scoreLines } from './lib/face'
 import type { Tone } from './lib/face'
 import { loadLedger, overruleCmd, refreshStatus } from './lib/house'
+import { shellFolder } from './lib/project'
 import { PANE, explainCmd, fix, onRecord, ruleNow, ruleTurn, summonCmd } from './lib/referee'
 import { paneView, remember, startTurn } from './lib/store'
 
@@ -86,10 +87,12 @@ export const register: Register = on => {
       return { deny: refusal }
     }
 
+    // Where the shell stands now: an `rm` in this call names its files from there.
+    const stood = input.tool === 'Bash' ? await shellFolder($) : ''
     const ran = await next(e)
 
     if (ran.deny === undefined) {
-      const made = await remember($, input, ran)
+      const made = await remember($, input, ran, stood)
 
       if (made !== undefined) {
         const line = await settle($, made, await onRecord($, made))

@@ -9,6 +9,15 @@ export async function projectRoot($: EngineInterface): Promise<string> {
   return $.session.root().catch(() => '')
 }
 
+/** Where the AI's shell stands, absolute; '' when the engine does not say. */
+export async function shellFolder($: EngineInterface): Promise<string> {
+  try {
+    return await $.session.cwd()
+  } catch {
+    return ''
+  }
+}
+
 /**
  * A path of the project, made absolute. `$.fs` reads a relative path from
  * where the AI's shell stands, and a `cd packages/api` by the AI moves that:

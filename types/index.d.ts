@@ -15,6 +15,7 @@ export type ToolRecord = {
   output: string              // last 2,000 characters of what the model read
   counts?: { passed: number; failed: number }
   testEdit?: TestEdit         // only for an edit or write of a test file
+  removed?: string[]          // test files and test folders an `rm` of this command names, by their paths inside the project
   numbers: string[]           // number tokens of the full input and output, newest 150
 }
 export type FileNet = { asserts: number; tests: number; skips: number; tables: number; removed: string[] }

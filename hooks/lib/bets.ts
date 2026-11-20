@@ -24,9 +24,19 @@ export const BET_SCHEMA = {
 export const GATE_TEXT =
   'Lie Eater: the referee takes your bet first. Call mcp__lie-eater__bet with expect ("pass" or "fail") and confidence (0.5 to 0.99), then run this command again.'
 
-/** The refusal names the test command: the agent has no other way to learn it. */
-export const gateText = (verdict: string): string =>
-  `${GATE_TEXT} The test command of this game is \`${verdict}\`: run it as written (a pipe to tail is fine).`
+/**
+ * The refusal names the test command: the agent has no other way to learn it.
+ * A runner the referee does not know is read by how it exits, so a pipe would hide its result.
+ */
+export function gateText(verdict: string): string {
+  const kind = classifyCommand(verdict)
+  const how =
+    kind === 'test' || kind === 'build'
+      ? 'run it as written (a pipe to tail is fine).'
+      : 'run it by itself, with no pipe. The referee does not know this runner and reads only how it exits.'
+
+  return `${GATE_TEXT} The test command of this game is \`${verdict}\`: ${how}`
+}
 
 const BAD_BET = 'Bet refused: give expect ("pass" or "fail") and confidence (0.5 to 0.99).'
 const BET_OPEN = 'Bet refused: a bet is already open.'

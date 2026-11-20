@@ -51,6 +51,8 @@ export type World = {
   open?: () => void
   /** The project's root, absolute. Left out, the engine names none. */
   root?: string
+  /** Where the AI's shell stands, absolute. Left out, it stands in the project's root. */
+  cwd?: string
 }
 
 export function world(on: On, opts: World = {}): Seen {
@@ -87,6 +89,15 @@ export function world(on: On, opts: World = {}): Seen {
     }
 
     return { value: opts.root }
+  })
+  on('session.cwd', () => {
+    const cwd = opts.cwd ?? opts.root
+
+    if (cwd === undefined) {
+      throw new Error('no working directory')
+    }
+
+    return { value: cwd }
   })
   on('ui.open', () => {
     seen.opens += 1

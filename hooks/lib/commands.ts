@@ -2,12 +2,36 @@
 // whether its output can be trusted. Plain functions; nothing here talks to the engine.
 import type { CommandKind } from '../../types'
 
-/** The command with every quoted text taken out: words inside quotes are not commands. */
-export const unquoted = (command: string): string => command.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, 'Q')
+// The body of a heredoc (`<<EOF … EOF`) is text, not commands.
+const HEREDOC = /(<<-?\s*\\?(['"]?)(\w+)\2[^\n]*)\n(?:[\s\S]*?\n)?[ \t]*\3[ \t]*(?=\n|$)/g
+// A quoted text, or a comment: a `#` that starts a word, to the end of its line.
+const QUOTED_OR_COMMENT = /'[^']*'|"(?:[^"\\]|\\.)*"|(^|\s)#[^\n]*/gm
 
-/** What may stand in front of the real command: variables, runners, `python -m`, `timeout 600`. */
+// The command as the shell reads it, on one line: no heredoc body and no
+// comment; a line that ends in `\` goes on in the next; every other new line
+// starts a new command, like `;`. `quoted` says what becomes of a quoted text.
+const flat = (command: string, quoted: (text: string) => string): string =>
+  command
+    .replace(HEREDOC, '$1')
+    .replace(QUOTED_OR_COMMENT, (found: string, space?: string) => (space === undefined ? quoted(found) : space))
+    .replace(/\\\n/g, ' ')
+    .replace(/(&&|\|\||\|&?)\s*\n\s*/g, '$1 ')
+    .trim()
+    .replace(/\s*\n\s*/g, '; ')
+
+/** The command on one line, with every quoted text taken out: words inside quotes are not commands. */
+export const unquoted = (command: string): string => flat(command, () => 'Q')
+
+/** The command on one line, with its quoted texts as they were typed. */
+export const oneLine = (command: string): string => flat(command, text => text)
+
+/**
+ * What may stand in front of the real command: variables, runners
+ * (`npx`, `yarn jest`, `bundle exec`, `python -m`, `timeout 600`), and the
+ * folder of a program that is named by its path (`.venv/bin/pytest`).
+ */
 export const WRAPPERS =
-  /^(?:[A-Za-z_]\w*=\S*\s+|(?:npx|bunx|sudo|time|exec)\s+|timeout\s+\S+\s+|(?:pnpm|yarn)\s+(?:exec|dlx)\s+|(?:uv|poetry|pipenv|hatch|pdm)\s+run\s+|python3?\s+-m\s+)+/
+  /^(?:[A-Za-z_]\w*=\S*\s+|(?:npx|bunx|sudo|time|exec|env|command)\s+|timeout\s+\S+\s+|(?:pnpm|yarn)\s+(?:exec|dlx)\s+|(?:pnpm|yarn|bun)\s+(?=(?:jest|vitest|mocha|ava|tsc|eslint)\b)|(?:uv|poetry|pipenv|hatch|pdm)\s+run\s+|bundle\s+exec\s+|python[\d.]*\s+-m\s+|\S*\/(?=[\w.@-]+(?:\s|$)))+/
 
 /** A file that is source code. A changelog, docs, config and data are not. */
 export const CODE_FILE = /\.(py|[cm]?[jt]sx?|go|rs|rb|java|kt|swift|c|h|cc|cpp|hpp|cs|php|scala|sh|sql|vue|svelte)$/
@@ -31,12 +55,39 @@ const KINDS: [CommandKind, RegExp][] = [
   ],
 ]
 
-/** The commands of a chain (`a && b; c | d`), quotes taken out. */
+// One command of a chain as it stands by itself: outside its `( … )` or `{ … }` group.
+const alone = (part: string): string =>
+  part
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[({]\s*/, '')
+    .replace(/\s*[)}]$/, '')
+
+/** The commands of a chain (`a && b; c | d`, or one on each line), quotes taken out. */
 export const chain = (command: string): string[] =>
   unquoted(command)
-    .split(/&&|\|\||[;|]/)
-    .map(part => part.replace(/\s+/g, ' ').trim())
+    .split(/&&|\|\||\|&?|;/)
+    .map(alone)
     .filter(part => part !== '')
+
+/**
+ * The commands of a chain as their words, each quoted word with its own text:
+ * `cd "my app" && rm tests/a.py` is [[cd, my app], [rm, tests/a.py]].
+ */
+export function words(command: string): string[][] {
+  const kept: string[] = []
+  const text = flat(command, quoted => `\u0001${kept.push(quoted.slice(1, -1)) - 1}\u0001`)
+
+  return text
+    .split(/&&|\|\||\|&?|;/)
+    .map(step =>
+      alone(step)
+        .split(' ')
+        .filter(word => word !== '')
+        .map(word => word.replace(/\u0001(\d+)\u0001/g, (_, i: string) => kept[Number(i)] ?? '')),
+    )
+    .filter(step => step.length > 0)
+}
 
 // The commands of a chain, each without what stands in front of it.
 const steps = (command: string): string[] => chain(command).map(part => part.replace(WRAPPERS, ''))
@@ -64,8 +115,10 @@ const KEEPS_LINES = /^(?:tail|head|tee|cat)\b/
 const KEEPS_NONE = /^(?:tail|head)\b.*\s-(?:[nc]\s*)?0\b/
 // Output that goes to a file: `> f`, `>> f`, `1> f`, `&> f` (not `2> f`, not `2>&1`).
 const TO_FILE = /(?:^|[^0-9&>])[1&]?>>?\s*[^&\s>]/
-// Beside the run, these run code of their own: their output could be anything.
-const RUNS_CODE = /^(?:python3?|node|ruby|perl|bash|sh|zsh|source|\.|xargs|printf|curl|wget)\b/
+// Beside the run, these run code of their own: their output could be anything...
+const RUNS_CODE = /^(?:(?:python[\d.]*|node|ruby|perl|bash|sh|zsh|xargs|printf|curl|wget)\b|(?:source|\.)\s)/
+// ...but a sourced environment file only sets up the shell (`source .venv/bin/activate`): it prints nothing.
+const SETS_UP = /^(?:source|\.)\s+\S*(?:activate|\.env(?:\.\w+)?|\.envrc|env\.sh|nvm\.sh|conda\.sh|\.(?:ba|z)shrc|\.(?:bash_)?profile)$/
 // Beside the run, these print the text of files: a summary in the output may be theirs.
 const PRINTS_FILES = /^(?:cat|less|more|bat|sed|awk|grep|rg|jq|head|tail|nl|git\s+(?:diff|show|log))\b/
 
@@ -73,7 +126,7 @@ const PRINTS_FILES = /^(?:cat|less|more|bat|sed|awk|grep|rg|jq|head|tail|nl|git\
 const pipelines = (command: string): string[][] =>
   unquoted(command)
     .split(/&&|\|\||;/)
-    .map(line => line.split('|').map(step => step.replace(/\s+/g, ' ').trim().replace(WRAPPERS, '')).filter(step => step !== ''))
+    .map(line => line.split(/\|&?/).map(step => alone(step).replace(WRAPPERS, '')).filter(step => step !== ''))
     .filter(line => line.length > 0)
 
 const isRun = (step: string): boolean => kindOf(step) === 'test' || kindOf(step) === 'build'
@@ -84,7 +137,8 @@ const isRun = (step: string): boolean => kindOf(step) === 'test' || kindOf(step)
  *  - the command holds no summary words itself (`; echo "12 passed"`);
  *  - the run's output is not sent to a file;
  *  - from the run, a pipe leads only to `tail`, `head`, `tee` or `cat`, and not to `tail -0`;
- *  - no command beside the run runs code of its own (a script can print anything).
+ *  - no command beside the run runs code of its own (a script can print anything);
+ *    sourcing an environment file is setup, not such code.
  * Commands that read beside the run (`cat cart.py`, `git status`, `ls`) are
  * fine: an honest agent chains them all the time. See `sharesOutput` for the
  * one case where their text matters.
@@ -98,7 +152,7 @@ export function countsAreItsOwn(command: string): boolean {
     const at = line.findIndex(isRun)
 
     if (at === -1) {
-      return !line.some(step => RUNS_CODE.test(step))
+      return !line.some(step => RUNS_CODE.test(step) && !SETS_UP.test(step))
     }
 
     const own = line.slice(at)

@@ -8,7 +8,7 @@ import { appendRecord, nextMeta, toRawCall } from './intake'
 import { EMPTY_LEDGER } from './ledger'
 import { projectRoot } from './project'
 import { META_START, SHAPE } from './state'
-import { plainCommand, summon, track } from './terms'
+import { isTheVerdict, plainCommand, summon, track } from './terms'
 
 const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
 const terms = atom({ plugin: 'lie-eater', key: 'terms' } as const, null, { shape: SHAPE.terms })
@@ -18,13 +18,20 @@ const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SH
 const ledger = atom({ plugin: 'lie-eater', key: 'ledger' } as const, EMPTY_LEDGER, { shape: SHAPE.ledger })
 const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
 
-/** Records one finished tool call and hands back the record. */
+/** Records one finished tool call and hands back the record. `stood` is where the shell stood before the call. */
 export async function remember(
   $: EngineInterface,
   input: Record<string, unknown>,
   ran: { text?: string; isError?: boolean; result?: unknown },
+  stood = '',
 ): Promise<ToolRecord | undefined> {
-  const raw = toRawCall(input, ran, await projectRoot($))
+  const raw = toRawCall(input, ran, await projectRoot($), stood)
+  const game = await read($, terms)
+
+  if (raw.command !== undefined && game?.state === 'in play' && isTheVerdict(game, raw.command)) {
+    raw.isVerdict = true
+  }
+
   const { turn } = await read($, meta)
   const at = await $.clock.now()
   let made: ToolRecord | undefined

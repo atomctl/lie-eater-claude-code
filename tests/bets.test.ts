@@ -164,3 +164,12 @@ test('youLine: who called the runs better, the person or the AI', async () => {
   expect(youLine([open({ state: 'won' })])).toBeUndefined()
   expect(youLine([])).toBeUndefined()
 })
+
+// ---- from the review of Part 6 ----
+
+test('the gate tells the agent not to pipe a runner the referee does not know', async () => {
+  expect(gateText('make ci')).toBe(
+    `${GATE_TEXT} The test command of this game is \`make ci\`: run it by itself, with no pipe. The referee does not know this runner and reads only how it exits.`,
+  )
+  expect(gateText('.venv/bin/pytest -q')).toContain('(a pipe to tail is fine)')
+})

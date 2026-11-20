@@ -1,16 +1,17 @@
 // The rules of one game: what is locked at the summon, what is tracked while
 // the agent works, and the ruling. Plain functions; no model, no engine.
 import type { FileNet, RulingLine, Terms, ToolRecord } from '../../types'
-import { WRAPPERS, chain, classifyCommand, isShellEdit } from './commands'
-import { evidenceLine, fileCounts, isCodeFile, isTestFile } from './record'
+import { WRAPPERS, chain, classifyCommand, isShellEdit, oneLine } from './commands'
+import { TEST_SOURCE, evidenceLine, fileCounts, isCodeFile, isTestFile } from './record'
 import { LINE } from './words'
 
-const tidy = (command: string): string => command.replace(/\s+/g, ' ').trim()
+// A command on one line: a comment is no part of it, and neither is a line break.
+const tidy = (command: string): string => oneLine(command).replace(/\s+/g, ' ').trim()
 
 /**
  * A command as a person would name it: no `cd` or variables in front, no pipe
- * to `tail` or `head` behind, and nothing about where its output goes
- * (`2>&1`, `> out.txt`): that changes what the referee can read, not which run it is.
+ * to `tail` or `head` behind, no comment, and nothing about where its output
+ * goes (`2>&1`, `> out.txt`): that changes what the referee can read, not which run it is.
  */
 export function plainCommand(command: string): string {
   const named = tidy(command)
@@ -46,8 +47,8 @@ const TAKES_VALUE = new Set([
   '--cov-report', '--junitxml', '--outputFile', '--maxWorkers', '-j', '--jobs', '--timeout', '-timeout',
   '--seed', '--rootdir', '-parallel', '--parallel', '-cpu', '-coverprofile', '--maxfail', '-count',
 ])
-// `pytest tests/` runs everything: the test folder itself is no narrowing.
-const TEST_ROOT = /^(\.\/)?(tests?|spec|__tests__)\/?$/
+// `pytest tests/` and `pytest .` run everything: the test folder, or the folder itself, is no narrowing.
+const TEST_ROOT = /^(?:\.\/?|(?:\.\/)?(?:tests?|spec|__tests__)\/?)$/
 
 type Shape = { words: string[]; narrows: string[] }
 
@@ -152,9 +153,6 @@ export function detectVerdict(
   return undefined
 }
 
-// The endings of files that hold tests.
-const TEST_SOURCE = /\.(py|[cm]?[jt]sx?|go|rb|java|rs|php|cs|kt|swift)$/
-
 const isCodeEdit = (r: ToolRecord): boolean =>
   (r.kind === 'edit' || r.kind === 'write') && r.state !== 'failed' && isCodeFile(r.target)
 const isGatedRun = (r: ToolRecord): boolean => r.kind === 'test' || r.kind === 'build'
@@ -201,18 +199,11 @@ export function summon(
   }
 }
 
-const isTheVerdict = (t: Terms, command: string): boolean =>
+/** Is this command a run of the game's test command? */
+export const isTheVerdict = (t: Terms, command: string): boolean =>
   isVerdictRun(command, t.verdict, t.testFiles) || (t.also !== undefined && isVerdictRun(command, t.also, t.testFiles))
 
 const NO_NET: FileNet = { asserts: 0, tests: 0, skips: 0, tables: 0, removed: [] }
-const TEST_FOLDER = /(^|\/)(tests?|__tests__|spec)$/
-
-// What an `rm` takes away from the tests: a test file, or a whole test folder.
-const removedTests = (command: string): string[] =>
-  command
-    .split(/\s+/)
-    .map(word => word.replace(/\/$/, ''))
-    .filter(word => (isTestFile(word) && TEST_SOURCE.test(word)) || TEST_FOLDER.test(word))
 
 /** Takes one new record into the game's tally. */
 export function track(t: Terms, r: ToolRecord): Terms {
@@ -269,8 +260,9 @@ export function track(t: Terms, r: ToolRecord): Terms {
       next.otherRun = { record: r.id, command: r.target.slice(0, 80) }
     }
 
-    if (/\brm\s/.test(r.target) && isOk) {
-      const gone = removedTests(r.target)
+    // What an `rm` of this command took away from the tests (read when the record was made).
+    if (r.removed !== undefined && isOk) {
+      const gone = r.removed
       // A test file the agent made in this game may be removed again.
       const own = gone.filter(path => next.made.includes(path))
       next.made = next.made.filter(path => !own.includes(path))

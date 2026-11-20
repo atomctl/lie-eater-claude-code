@@ -139,3 +139,53 @@ test('a ruling names a test file by its path inside the project', async ($, on) 
   expect(out.text).toContain('    tests/price.test.ts: new skip or only marks: 1')
   expect(out.text).not.toContain('/home/me')
 })
+
+// ---- from the review of Part 6 ----
+
+test('a scratch test file the agent made and removed again, from inside a folder, is no deleted test', async ($, on) => {
+  // the AI's shell stands in the tests folder: `rm test_scratch.py` names tests/test_scratch.py
+  world(on, { root: '/home/me/calc', cwd: '/home/me/calc/tests' })
+  on('tool.call', () => ({ result: {}, text: '34 passed in 1s' }))
+
+  await $.command.run({ command: 'summon', args: 'pytest' } as never)
+  await $.tool.call({
+    tool: 'Write',
+    file_path: '/home/me/calc/tests/test_scratch.py',
+    content: 'def test_a():\n    assert 1 == 1\n',
+  })
+  await $.tool.call({ tool: 'Bash', command: 'rm test_scratch.py && rm -rf ../.pytest_cache' })
+  const out = await $.command.run({ command: 'rule', args: '' } as never)
+
+  expect(out.text).toContain('✓ No test was deleted')
+})
+
+test('removing a cache in front of the test run deletes no test', async ($, on) => {
+  world(on, { root: '/home/me/calc' })
+  on('tool.call', () => ({ result: {}, text: 'Tests: 12 passed, 12 total' }))
+
+  await $.command.run({ command: 'summon', args: 'npm test' } as never)
+  await $.tool.call({ tool: 'mcp__lie-eater__bet', expect: 'pass', confidence: 0.9 } as never)
+  await $.tool.call({ tool: 'Bash', command: 'rm -rf node_modules/.cache && npm test' })
+  const out = await $.command.run({ command: 'rule', args: '' } as never)
+
+  expect(out.text).toContain('✓ No test was deleted')
+  expect(out.text).toContain('VERDICT: RULES KEPT.')
+})
+
+test('a locked command of a runner the referee does not know is read by how it exits; behind a pipe it is not read', async ($, on) => {
+  world(on)
+  on('tool.call', () => ({ result: {}, text: 'all good' }))
+
+  await $.command.run({ command: 'summon', args: 'make ci' } as never)
+  await $.tool.call({ tool: 'mcp__lie-eater__bet', expect: 'pass', confidence: 0.9 } as never)
+  await $.tool.call({ tool: 'Bash', command: 'make ci 2>&1 | tail -5' })
+
+  expect((await $.command.run({ command: 'fix', args: '' } as never)).text).toBe(
+    'The referee asked the AI to run the tests by themselves.',
+  )
+
+  await $.tool.call({ tool: 'mcp__lie-eater__bet', expect: 'pass', confidence: 0.9 } as never)
+  await $.tool.call({ tool: 'Bash', command: 'make ci' })
+
+  expect((await $.command.run({ command: 'rule', args: '' } as never)).text).toContain('VERDICT: RULES KEPT.')
+})

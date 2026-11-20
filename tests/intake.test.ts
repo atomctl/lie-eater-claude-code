@@ -103,3 +103,20 @@ test('an edit of a test file carries the counts of the whole file as it was', as
   const fresh = toRawCall({ tool: 'Write', file_path: 'tests/new.test.ts', content: before }, { result: { originalFile: null }, text: 'created' })
   expect(appendRecord([], fresh, 1, 0).at(-1)?.testEdit?.file).toBeUndefined()
 })
+
+// ---- from the review of Part 6 ----
+
+test('toRawCall hands on where the project is and where the shell stood, for a shell call only', async () => {
+  expect(toRawCall({ tool: 'Bash', command: 'rm a.py' }, { text: '' }, '/proj', '/proj/tests')).toEqual({
+    tool: 'Bash',
+    command: 'rm a.py',
+    text: '',
+    root: '/proj',
+    stood: '/proj/tests',
+  })
+  expect(toRawCall({ tool: 'Read', file_path: '/proj/a.py' }, { text: '' }, '/proj', '/proj/tests')).toEqual({
+    tool: 'Read',
+    path: 'a.py',
+    text: '',
+  })
+})

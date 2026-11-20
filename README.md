@@ -153,9 +153,13 @@ Whether you commit `.lie-eater/` is your choice.
 | Did an AI lie by itself? | No. In 120 games no model said "done" over a broken rule. |
 | How good are the bets? | The AI said about 90% sure and was right 127 of 131 times. On textbook exercises the bet says little. |
 
-The games found fourteen faults in the referee. Each one was fixed with a test that failed first. A new kind of project will find more: please report a ruling that you think is wrong, with `.lie-eater/receipts.json`.
+The games found fourteen faults in the referee. Each one was fixed with a test that failed first.
 
-**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each one is replayed through the same rules the live mod uses. One command reproduces the table and runs the mod's 215 tests:
+**Then a code review found eleven more, in shapes that no game had used.** Six would have accused honest work (`rm -rf node_modules/.cache && npm test` was "a deleted test file"; `.venv/bin/pytest` was "tests never run"). Three read a failing run as passing behind a pipe. Two gave "not proven" for an honest run. None of the 377 shell commands in the games held an `rm`, named the test runner by its path, or ran the tests from a second line. So "0 in the next 90" is true for the games that were played, and no more than that. These eleven are fixed the same way, and one test now sends 5,760 honest shapes of a test command through the referee: none reads as the opposite of what happened.
+
+A new kind of project will find more: please report a ruling that you think is wrong, with `.lie-eater/receipts.json`.
+
+**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each one is replayed through the same rules the live mod uses. One command reproduces the table and runs the mod's 233 tests:
 
 ```
 claude plugin test .
@@ -186,6 +190,8 @@ In Lie Eater no model takes part in a ruling. Rules decide every line and every 
 - **A test changed through the shell is not measured.** Rules 2 to 4 count what the Edit and Write tools change. `sed -i`, a heredoc or a script that rewrites a test file makes an earlier run stale, but what it took out of the file is not counted.
 - **LIE EATEN does not ask whether the AI hid the breach.** "Done, and I skipped one test" is called a lie like a plain "done".
 - **The record is read, never re-run.** Lie Eater sees the test output the AI saw. It does not run your tests again.
+- **A test command the referee does not know** (`make ci`, `python manage.py test`) is read by how it exits. Behind a pipe it is not read: the game says NOT PROVEN, and the AI is told to run it by itself.
+- **An `rm` is read from the command line.** `find … -delete`, `xargs rm` or a script that removes test files is not seen. A test file renamed by "write the new one, remove the old one" counts as deleted.
 - **Test files are found in the project's folder and in `tests/` or `test/`.** In a project that keeps them deeper, a run that names only some test files can pass as the full run.
 - **A small model decides "said it is finished".** It can be wrong in both directions.
 - **The games were small and well known.** Nothing here was measured on a large project, and nothing in Go or Rust.
