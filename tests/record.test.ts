@@ -437,3 +437,20 @@ test('a failed chain does not say which command failed', async () => {
   // a build shows no counts: a failed chain is a failed build
   expect(made('cd web && npm run build', 'Exit code 1\nerror TS2322')).toBe('failed')
 })
+
+test("evidenceLine shows the run's own summary, not what a later command printed", async () => {
+  const made = (command: string, text: string) => evidenceLine(makeRecord({ tool: 'Bash', command, text }, 1, 1, 0))
+
+  // from the soak: the proof under a bet read "1 file changed, 1 insertion(+), 1 deletion(-)"
+  expect(
+    made(
+      'python3 -m pytest 2>&1 | tail -15 && git diff --stat',
+      '============ 5 passed in 0.01s ============\n tests/test_stats.py | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)',
+    ),
+  ).toBe('python3 -m pytest 2>&1 | tail -15 && git diff --stat → ============ 5 passed in 0.01s ============')
+  expect(made('npm test | tail -5; git status --short', ' Tests  2 failed | 10 passed (12)\n M src/a.js')).toBe(
+    'npm test | tail -5; git status --short → Tests  2 failed | 10 passed (12)',
+  )
+  // with no summary in sight, the last line stands
+  expect(made('npm run build', 'compiled\ndone in 2s')).toBe('npm run build → done in 2s')
+})

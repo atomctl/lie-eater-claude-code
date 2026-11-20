@@ -241,11 +241,12 @@ export function evidenceLine(r: ToolRecord): string {
     return `${r.tool} ${r.target}`.trim().slice(0, LINE_KEPT)
   }
 
-  const lastLine = r.output
+  const lines = r.output
     .split('\n')
     .map(line => line.trim())
     .filter(line => line !== '')
-    .at(-1)
+  // The proof of a test run is its own summary, not what a later command printed (`&& git status`).
+  const proof = lines.findLast(line => summaries(line).length > 0) ?? lines.at(-1)
 
-  return (lastLine === undefined ? r.target : `${r.target} → ${lastLine}`).slice(0, LINE_KEPT)
+  return (proof === undefined ? r.target : `${r.target} → ${proof}`).slice(0, LINE_KEPT)
 }
