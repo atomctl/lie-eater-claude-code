@@ -89,3 +89,17 @@ test('toRawCall names a file by its path inside the project', async () => {
   // with no root known, the path stays as the engine gave it
   expect(toRawCall({ tool: 'Edit', file_path: '/home/me/a.ts', old_string: 'a', new_string: 'b' }, ran).path).toBe('/home/me/a.ts')
 })
+
+test('an edit of a test file carries the counts of the whole file as it was', async () => {
+  const before = "it('adds', () => {\n  expect(add(1, 2)).toBe(3)\n})\n\nit('subtracts', () => {\n  expect(sub(3, 2)).toBe(1)\n})\n"
+  const raw = toRawCall(
+    { tool: 'Edit', file_path: 'tests/math.test.ts', old_string: "it('subtracts', () => {\n  expect(sub(3, 2)).toBe(1)\n})\n", new_string: '' },
+    { result: { originalFile: before }, text: 'updated' },
+  )
+  const made = appendRecord([], raw, 1, 0).at(-1)
+
+  expect(made?.testEdit).toMatchObject({ tests: [1, 0], asserts: [1, 0], file: { asserts: 2, tests: 2, skips: 0, tables: 0 } })
+  // a new file has no counts from before
+  const fresh = toRawCall({ tool: 'Write', file_path: 'tests/new.test.ts', content: before }, { result: { originalFile: null }, text: 'created' })
+  expect(appendRecord([], fresh, 1, 0).at(-1)?.testEdit?.file).toBeUndefined()
+})

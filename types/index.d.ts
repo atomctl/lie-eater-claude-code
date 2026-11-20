@@ -1,7 +1,8 @@
 export type CommandKind = 'test' | 'build' | 'lint' | 'git' | 'install' | 'other'
 export type RecordKind = CommandKind | 'edit' | 'write' | 'tool'
 /** Counts in the old and the new text of one test-file edit: [old, new]. */
-export type TestEdit = { asserts: [number, number]; tests: [number, number]; skips: [number, number]; tables: [number, number]; lines: string[] }   // lines: up to 3 assertion lines that are in the old text and not in the new
+export type TestEdit = { asserts: [number, number]; tests: [number, number]; skips: [number, number]; tables: [number, number]; lines: string[]; file?: FileCounts }
+// lines: up to 3 assertion lines that are in the old text and not in the new · file: the counts of the whole file as it was before this edit, when the engine gave its text
 export type ToolRecord = {
   id: number                  // 1, 2, 3 … in the session; shown as "call N"
   turn: number                // counts the person's prompts
@@ -33,9 +34,11 @@ export type Terms = {
   net: Record<string, FileNet> // per test file, summed over its edits since the summon
   deleted: string[]           // test files removed with rm or git rm
   made: string[]              // test files first written in this game; removing one again is no fault
+  base?: Record<string, FileCounts> // per test file, its own counts before the agent's first edit in this game
   otherRun?: { record: number; command: string }   // the newest test run that was not the verdict command
 }
 export type TermId = 'verdict' | 'asserts' | 'tests' | 'skips' | 'numbers'
+export type FileCounts = { asserts: number; tests: number; skips: number; tables: number }
 export type RulingLine = { term: TermId; pass: boolean; plain: string; detail: string; why?: string; soft?: true; unclear?: true }
 // soft: a note, never breaks the game · unclear: the referee could not see, so the rule is neither kept nor broken
 export type Ruling = {

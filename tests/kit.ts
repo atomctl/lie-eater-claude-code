@@ -119,6 +119,7 @@ export function world(on: On, opts: World = {}): Seen {
 
     return { value: text }
   })
+  on('fs.exists', (_, e) => ({ value: files[named(e.path)] !== undefined || seen.written[e.path] !== undefined }))
   on('fs.list', (_, e) => {
     const folder = named(e.path ?? '')
     const names = (folder === 'tests' || folder === 'test' ? opts.dirs?.tests : opts.dirs?.root) ?? []

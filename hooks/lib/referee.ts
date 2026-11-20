@@ -11,7 +11,7 @@ import { checkNumbers } from './numbers'
 import { inProject, projectFiles, projectNames } from './project'
 import { CARD_SVG, RECEIPTS_JSON } from './receipts'
 import { META_START, SHAPE } from './state'
-import { detectVerdict, isKept, packageTestScript, plainCommand, rule, summon, track } from './terms'
+import { detectVerdict, foundAgain, isKept, packageTestScript, plainCommand, remeasured, rule, summon, track } from './terms'
 import { VOICE, explain, isNoFoul, repairOrder, rulingText, termsText, verdictOf } from './words'
 
 export const PANE = 'lie-eater'
@@ -182,6 +182,24 @@ export async function onRecord($: EngineInterface, r: ToolRecord): Promise<Terms
   return inPlay(before) ? before : undefined
 }
 
+/**
+ * Before a ruling the referee looks at the test files themselves: one that the
+ * agent put back through the shell is not charged (see `remeasured`).
+ */
+async function looked($: EngineInterface, game: Terms): Promise<Terms> {
+  let seen = game
+
+  for (const path of Object.keys(game.base ?? {})) {
+    const text = await $.fs.read(await inProject($, path)).catch(() => undefined)
+    if (text !== undefined) seen = remeasured(seen, path, text)
+  }
+  for (const path of game.deleted) {
+    if (await $.fs.exists(await inProject($, path)).catch(() => false)) seen = foundAgain(seen, path)
+  }
+
+  return seen
+}
+
 async function addRuling($: EngineInterface, made: Omit<Ruling, 'id' | 'turn' | 'at'>): Promise<Ruling> {
   const m = await read($, meta)
   const ruling: Ruling = { ...made, id: m.rulingSeq + 1, turn: m.turn, at: await $.clock.now() }
@@ -208,7 +226,7 @@ export async function ruleTurn($: EngineInterface, answer: string): Promise<void
   // The agent may report its own bet ("90% sure"): that number has a source.
   const ownBets = (await read($, bets)).map(b => String(b.confidence))
   const { fromNowhere } = checkNumbers(answer, await read($, records), promptNumbers, ownBets)
-  const lines = rule(game, fromNowhere)
+  const lines = rule(await looked($, game), fromNowhere)
   const met = isKept(lines)
   // "Done" can only be a lie about work: with no edit and no run since the
   // summon (a question was answered) there is nothing to ask the model.
@@ -271,7 +289,7 @@ export async function ruleNow($: EngineInterface): Promise<string> {
   }
 
   const fromNowhere = latestRuling(await read($, rulings), game.id)?.fromNowhere ?? []
-  const lines = rule(game, fromNowhere)
+  const lines = rule(await looked($, game), fromNowhere)
   const met = isKept(lines)
   const worked = game.lastCodeEdit > game.startRecord || game.lastGatedRun > game.startRecord
   const debt = await recordRuling($, game, { lines, met, lie: false, final: true, worked, noFoul: noFoul(lines) })
@@ -291,8 +309,9 @@ export async function fix($: EngineInterface): Promise<string> {
     return NOTHING_TO_FIX
   }
 
-  const lines = rule(game, latestRuling(await read($, rulings), game.id)?.fromNowhere ?? [])
-  const order = repairOrder(lines, game)
+  const seen = await looked($, game)
+  const lines = rule(seen, latestRuling(await read($, rulings), game.id)?.fromNowhere ?? [])
+  const order = repairOrder(lines, seen)
 
   if (order === undefined) {
     return NOTHING_TO_FIX

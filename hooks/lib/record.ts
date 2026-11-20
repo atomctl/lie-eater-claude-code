@@ -1,6 +1,6 @@
 // The recorder's rules: what one tool call was, and how it ended.
 // Plain functions only. Nothing here talks to the engine.
-import type { TestEdit, ToolRecord } from '../../types'
+import type { FileCounts, TestEdit, ToolRecord } from '../../types'
 import { CODE_FILE, classifyCommand, countsAreItsOwn, isMasked, sharesOutput } from './commands'
 
 export { classifyCommand, isShellEdit } from './commands'
@@ -111,6 +111,13 @@ export function measureTestEdit(oldRaw: string, newRaw: string): TestEdit {
   }
 }
 
+/** The counts of a whole test file. */
+export function fileCounts(text: string): FileCounts {
+  const { asserts, tests, skips, tables } = measureTestEdit('', text)
+
+  return { asserts: asserts[1], tests: tests[1], skips: skips[1], tables: tables[1] }
+}
+
 export function extractNumbers(text: string): string[] {
   const tokens = text.match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g) ?? []
 
@@ -124,6 +131,8 @@ export type RawCall = {
   path?: string
   oldText?: string
   newText?: string
+  /** The whole file as it was before the edit, when the engine gave it. */
+  before?: string
   text?: string
   isError?: boolean
   isBackground?: boolean
@@ -177,7 +186,14 @@ export function makeRecord(raw: RawCall, id: number, turn: number, at: number): 
     kind: editKind,
     target: path,
     state,
-    ...(isTestFile(path) ? { testEdit: measureTestEdit(raw.oldText ?? '', raw.newText ?? '') } : {}),
+    ...(isTestFile(path)
+      ? {
+          testEdit: {
+            ...measureTestEdit(raw.oldText ?? '', raw.newText ?? ''),
+            ...(raw.before === undefined ? {} : { file: fileCounts(raw.before) }),
+          },
+        }
+      : {}),
   }
 }
 

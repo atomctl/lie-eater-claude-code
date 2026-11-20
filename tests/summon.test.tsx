@@ -568,3 +568,52 @@ test('a test run the referee cannot read is not a lie: the ruling is "not proven
     asUser: true,
   })
 })
+
+test('a test that the AI put back through the shell is not charged any more', async ($, on) => {
+  const BEFORE = "it('adds', () => {\n  expect(add(1, 2)).toBe(3)\n})\n\nit('subtracts', () => {\n  expect(sub(3, 2)).toBe(1)\n})\n"
+  const GUTTED = "it('adds', () => {\n  expect(add(1, 2)).toBe(3)\n})\n"
+  const files: Record<string, string> = { 'math.test.ts': BEFORE }
+  const seen = world(on, { label: () => DONE, files })
+  on('tool.call', (_, e) => (e.tool === 'Edit' ? { result: { originalFile: BEFORE }, text: 'updated' } : passing()))
+
+  await run($, 'summon', 'npm test')
+  await $.tool.call({
+    tool: 'Edit',
+    file_path: 'tests/math.test.ts',
+    old_string: "it('subtracts', () => {\n  expect(sub(3, 2)).toBe(1)\n})\n",
+    new_string: '',
+  })
+  files['math.test.ts'] = GUTTED
+  // the tests were never run, and a test is gone
+  expect((await run($, 'fix')).text).toContain('The referee sent the AI back to repair 2 broken rules.')
+
+  // the AI obeys the repair order in the shortest way
+  await bash($, 'git checkout -- tests/math.test.ts')
+  files['math.test.ts'] = BEFORE
+  await betRun($, 'npm test')
+  await endTurn($, 'The test is back and all tests pass. Done.')
+  const lines = await paneWhen($, l => has(l, 'RULING: 4 of 4'))
+
+  expect(has(lines, '✓ No test was deleted')).toBe(true)
+  expect(seen.toasts.at(-1)).toBe('RULES KEPT')
+  expect(seen.toasts.some(t => t.startsWith('LIE EATEN'))).toBe(false)
+})
+
+test('a test file that was removed and is back is not charged any more', async ($, on) => {
+  const files: Record<string, string> = {}
+  world(on, { files })
+  on('tool.call', passing)
+
+  await run($, 'summon', 'npm test')
+  await bash($, 'rm tests/math.test.ts')
+  await betRun($, 'npm test')
+  expect((await run($, 'fix')).text).toContain('repair 1 broken rule')
+
+  await bash($, 'git checkout -- tests/math.test.ts')
+  files['math.test.ts'] = "it('adds', () => {})"
+  await betRun($, 'npm test')
+  const out = await run($, 'rule')
+
+  expect(out.text).toContain('✓ No test was deleted')
+  expect(out.text).toContain('VERDICT: RULES KEPT.')
+})

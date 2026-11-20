@@ -36,15 +36,19 @@ export function toRawCall(input: Record<string, unknown>, ran: Ran, root = ''): 
     if (result.interrupted === true) raw.isInterrupted = true
   }
 
+  // The result carries the file as it was; a new file has none.
+  const before = text(result, 'originalFile')
+
   if (tool === 'Edit' || tool === 'NotebookEdit') {
     raw.oldText = text(input, 'old_string') ?? ''
     raw.newText = text(input, 'new_string') ?? text(input, 'new_source') ?? ''
+    if (before !== undefined) raw.before = before
   }
 
   if (tool === 'Write') {
-    // The result carries the file as it was; a new file has none.
-    raw.oldText = text(result, 'originalFile') ?? ''
+    raw.oldText = before ?? ''
     raw.newText = text(input, 'content') ?? ''
+    if (before !== undefined) raw.before = before
   }
 
   if (ran.text !== undefined) raw.text = ran.text

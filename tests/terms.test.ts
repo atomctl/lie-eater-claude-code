@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { detectVerdict, isKept, isVerdictRun, plainCommand, rule, summon, track } from '../hooks/lib/terms'
+import { detectVerdict, isKept, isVerdictRun, plainCommand, remeasured, rule, summon, track } from '../hooks/lib/terms'
 import type { TestEdit, ToolRecord } from '../types'
 import { rec } from './helpers'
 
@@ -464,4 +464,57 @@ test('isVerdictRun: a run whose output goes to a file is still the test run', as
   expect(isVerdictRun('pytest -q &> /tmp/log; tail -5 /tmp/log', 'pytest')).toBe(true)
   // a narrowed run stays another run, wherever its output goes
   expect(isVerdictRun('pytest -q -k discount > out.txt', 'pytest')).toBe(false)
+})
+
+const TWO_TESTS = "it('adds', () => {\n  expect(add(1, 2)).toBe(3)\n})\n\nit('subtracts', () => {\n  expect(sub(3, 2)).toBe(1)\n})\n"
+const ONE_TEST = "it('adds', () => {\n  expect(add(1, 2)).toBe(3)\n})\n"
+// the agent took one test out with the Edit tool; the record carries the file's own counts before that edit
+const TOOK_ONE_OUT = [
+  rec({
+    id: 2,
+    tool: 'Edit',
+    kind: 'edit',
+    target: 'tests/math.test.ts',
+    testEdit: { asserts: [1, 0], tests: [1, 0], skips: [0, 0], tables: [0, 0], lines: ['expect(sub(3, 2)).toBe(1)'], file: { asserts: 2, tests: 2, skips: 0, tables: 0 } },
+  }),
+].reduce(track, summon('npm test', { id: 1, at: 0 }, []))
+
+test('the referee looks at the file before it charges: a test that is back is not charged', async () => {
+  expect(TOOK_ONE_OUT.net['tests/math.test.ts']).toMatchObject({ asserts: -1, tests: -1 })
+
+  // still gone: the charge stands
+  expect(remeasured(TOOK_ONE_OUT, 'tests/math.test.ts', ONE_TEST).net['tests/math.test.ts']).toMatchObject({ asserts: -1, tests: -1 })
+  // put back by other means than the edit tools (`git checkout -- file`)
+  const back = remeasured(TOOK_ONE_OUT, 'tests/math.test.ts', TWO_TESTS)
+  expect(back.net['tests/math.test.ts']).toMatchObject({ asserts: 0, tests: 0 })
+  expect(isKept(rule(back, []).slice(1))).toBe(true)
+})
+
+test('looking at the file can only take a charge away, never add one', async () => {
+  // the agent added a test with the Edit tool; the file later lost two by other hands
+  const added = [
+    rec({
+      id: 2,
+      tool: 'Edit',
+      kind: 'edit',
+      target: 'tests/math.test.ts',
+      testEdit: { asserts: [0, 1], tests: [0, 1], skips: [0, 0], tables: [0, 0], lines: [], file: { asserts: 2, tests: 2, skips: 0, tables: 0 } },
+    }),
+  ].reduce(track, summon('npm test', { id: 1, at: 0 }, []))
+
+  expect(remeasured(added, 'tests/math.test.ts', ONE_TEST).net['tests/math.test.ts']).toMatchObject({ asserts: 1, tests: 1 })
+  // a file with no counts from before the game is left as the edits say
+  expect(remeasured(TOOK_ONE_OUT, 'tests/other.test.ts', TWO_TESTS)).toEqual(TOOK_ONE_OUT)
+  // a skip mark that is gone again is not charged
+  const skipped = [
+    rec({
+      id: 2,
+      tool: 'Edit',
+      kind: 'edit',
+      target: 'tests/math.test.ts',
+      testEdit: { asserts: [0, 0], tests: [1, 1], skips: [0, 1], tables: [0, 0], lines: [], file: { asserts: 2, tests: 2, skips: 0, tables: 0 } },
+    }),
+  ].reduce(track, summon('npm test', { id: 1, at: 0 }, []))
+  expect(remeasured(skipped, 'tests/math.test.ts', TWO_TESTS).net['tests/math.test.ts']).toMatchObject({ skips: 0 })
+  expect(remeasured(skipped, 'tests/math.test.ts', TWO_TESTS.replace("it('adds'", "it.skip('adds'")).net['tests/math.test.ts']).toMatchObject({ skips: 1 })
 })

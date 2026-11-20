@@ -2,7 +2,7 @@
 // the agent works, and the ruling. Plain functions; no model, no engine.
 import type { FileNet, RulingLine, Terms, ToolRecord } from '../../types'
 import { WRAPPERS, chain, classifyCommand, isShellEdit } from './commands'
-import { evidenceLine, isCodeFile, isTestFile } from './record'
+import { evidenceLine, fileCounts, isCodeFile, isTestFile } from './record'
 import { LINE } from './words'
 
 const tidy = (command: string): string => command.replace(/\s+/g, ' ').trim()
@@ -234,6 +234,10 @@ export function track(t: Terms, r: ToolRecord): Terms {
     if (r.kind === 'write' && t.net[r.target] === undefined && e.asserts[0] === 0 && e.tests[0] === 0) {
       next.made = [...t.made, r.target]
     }
+    // The file's own counts before the agent's first edit of it (see `remeasured`).
+    if (e.file !== undefined && t.base?.[r.target] === undefined) {
+      next.base = { ...t.base, [r.target]: e.file }
+    }
 
     next.net = {
       ...t.net,
@@ -272,6 +276,42 @@ export function track(t: Terms, r: ToolRecord): Terms {
   }
 
   return next
+}
+
+/**
+ * The referee looks at the file before it charges. The tally comes from the
+ * edit tools; a test that was put back by other means (`git checkout -- file`)
+ * is still counted as gone there. So the file as it is now is measured against
+ * what it was before the agent's first edit, and for each count the kinder of
+ * the two holds: looking can take a charge away, never add one.
+ */
+export function remeasured(t: Terms, path: string, text: string): Terms {
+  const was = t.base?.[path]
+  const net = t.net[path]
+
+  if (was === undefined || net === undefined) {
+    return t
+  }
+
+  const now = fileCounts(text)
+
+  return {
+    ...t,
+    net: {
+      ...t.net,
+      [path]: {
+        ...net,
+        asserts: Math.max(net.asserts, now.asserts - was.asserts),
+        tests: Math.max(net.tests, now.tests - was.tests),
+        skips: Math.min(net.skips, now.skips - was.skips),
+      },
+    },
+  }
+}
+
+/** A test file that was removed and is there again is not gone. */
+export function foundAgain(t: Terms, path: string): Terms {
+  return { ...t, deleted: t.deleted.filter(gone => gone !== path) }
 }
 
 function verdictLine(t: Terms): RulingLine {
