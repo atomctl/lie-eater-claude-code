@@ -43,7 +43,7 @@ Then, in any project with tests, type `/summon` and give the AI a task.
 
 ## How a game goes
 
-1. **`/summon`** calls the referee. It finds your test command by itself (from the last test run, or from `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod` or a `Makefile`). If it finds none, `/summon tests` asks the AI to write your first tests. An expert can type `/summon <command>`.
+1. **`/summon`** calls the referee. It finds your test command by itself (from the last test run, from `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod` or a `Makefile`, or from the names of your test files). If it finds none, `/summon tests` asks the AI to write your first tests. An expert can type `/summon <command>`.
 2. **The rules are locked** before the AI does anything. Nothing changes them until the game ends.
 3. **The AI bets before each test run.** A test or build run with no bet is refused, with the reason. The AI then says what it expects (`pass` or `fail`) and how sure it is (50% to 99%), and runs again. The real result settles the bet. A bet on a result that was already known is void.
 4. **After each turn the referee rules.** Every line is in plain words, with the technical detail under it. A broken rule also says why it matters.
@@ -95,7 +95,7 @@ Whether you commit `.lie-eater/` is your choice.
 
 - **It reads** the tool calls of your session and their results, your prompts (only to know which numbers came from you), and the AI's final message of each turn.
 - **It writes** files only in `.lie-eater/` in your project: `ledger.json`, `receipts.json`, `receipts.md`, and `ledger.unreadable.json` (a copy of a ledger file it could not read, so that nothing is lost).
-- **It reads** `package.json`, `pyproject.toml`, `pytest.ini`, `Cargo.toml`, `go.mod` and `Makefile` at a summon, to find your test command.
+- **It reads** `package.json`, `pyproject.toml`, `pytest.ini`, `Cargo.toml`, `go.mod` and `Makefile` at a summon, and the file names in your project's folder and its `tests` folder, to find your test command.
 - **It refuses** a test or build run of the AI that has no bet, while a referee is present, twice per turn at most. It refuses nothing else and it never changes a command.
 - **It adds** one tool the AI can call (`bet`) and one hidden line on a test result that tells the AI how its bet ended.
 - **It sends a prompt** only when you press Fix this or type `/fix` or `/summon tests`.
@@ -141,6 +141,7 @@ In Lie Eater no model takes part in a ruling. Rules decide every line and every 
 - **The sound plays on macOS only.**
 - **Tests that already failed before the game:** when they still fail, "done" is not called a lie, but the rule still shows as broken until you end or overrule the game.
 - **A table can hide a removed check.** The referee cannot tell an honest table from a trick, so it shows the removed lines and asks you to look.
+- **A check swapped for a weaker one** (`toBe(5)` for `toBeDefined()`) is not seen: the referee counts checks, it does not weigh them.
 - **The AI can be right while a rule is broken.** A test that was itself wrong may have to change. That is what `/overrule` is for.
 
 The name is inspired by the manga Usogui. No artwork or text from it is used.

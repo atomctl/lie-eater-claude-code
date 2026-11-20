@@ -64,6 +64,17 @@ async function projectFiles($: EngineInterface): Promise<Record<string, string |
   return Object.fromEntries(PROJECT_FILES.map((name, i) => [name, texts[i]]))
 }
 
+// The names of the files in the project's folder and in its test folders.
+async function projectNames($: EngineInterface): Promise<string[]> {
+  const [root, tests, test] = await Promise.all([
+    $.fs.list().catch(() => []),
+    $.fs.list('tests').catch(() => []),
+    $.fs.list('test').catch(() => []),
+  ])
+
+  return [...root.map(e => e.name), ...tests.map(e => `tests/${e.name}`), ...test.map(e => `test/${e.name}`)]
+}
+
 // The newest test run that is a plain command: not chained, silenced or filtered.
 function verdictFromRecord(list: readonly ToolRecord[]): string | undefined {
   return list
@@ -103,7 +114,7 @@ export async function summonCmd($: EngineInterface, args: string): Promise<strin
 
   const list = await read($, records)
   const files = await projectFiles($)
-  const verdict = asked !== '' ? asked : (verdictFromRecord(list) ?? detectVerdict(files))
+  const verdict = asked !== '' ? asked : (verdictFromRecord(list) ?? detectVerdict(files, await projectNames($)))
 
   if (verdict === undefined) {
     return NO_TESTS

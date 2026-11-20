@@ -428,3 +428,10 @@ test('the script behind `npm test` counts as the test run in a live game', async
 
   expect(has(await paneWhen($, l => has(l, 'VERDICT')), 'VERDICT: RULES KEPT.')).toBe(true)
 })
+
+test('/summon finds pytest from the test files of a folder that has no config', async ($, on) => {
+  world(on, { dirs: { root: ['forth.py', 'forth_test.py'] } })
+  on('tool.call', passing)
+
+  expect((await run($, 'summon')).text).toContain('1. The tests must really pass (pytest)')
+})

@@ -54,6 +54,15 @@ test('detectVerdict finds the test command from the files of the project', async
   expect(detectVerdict({})).toBeUndefined()
 })
 
+test('detectVerdict: test files with no config file are enough', async () => {
+  expect(detectVerdict({}, ['forth.py', 'forth_test.py'])).toBe('pytest')
+  expect(detectVerdict({}, ['src', 'tests/test_api.py'])).toBe('pytest')
+  expect(detectVerdict({}, ['main.go', 'main_test.go'])).toBe('go test ./...')
+  expect(detectVerdict({}, ['contest.py', 'latest.py', 'README.md'])).toBeUndefined()
+  // a config file wins over a guess from the file names
+  expect(detectVerdict({ 'package.json': '{"scripts":{"test":"vitest run"}}' }, ['legacy_test.py'])).toBe('npm test')
+})
+
 test('summon takes over what the record already knows', async () => {
   const before = [rec({ id: 3, kind: 'test', target: 'npm test' }), edit(5)]
 

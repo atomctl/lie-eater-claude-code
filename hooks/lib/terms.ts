@@ -115,13 +115,23 @@ export function packageTestScript(text: string | undefined): string | undefined 
   }
 }
 
-export function detectVerdict(files: Record<string, string | undefined>): string | undefined {
+/**
+ * The project's test command, from its config files, or else from the names
+ * of its files (the folder itself and its `tests` folder).
+ */
+export function detectVerdict(
+  files: Record<string, string | undefined>,
+  names: readonly string[] = [],
+): string | undefined {
   // shortcut: npm only; pnpm, yarn and bun projects type /summon <command>
   if (packageTestScript(files['package.json']) !== undefined) return 'npm test'
   if (files['pyproject.toml'] !== undefined || files['pytest.ini'] !== undefined) return 'pytest'
   if (files['Cargo.toml'] !== undefined) return 'cargo test'
   if (files['go.mod'] !== undefined) return 'go test ./...'
   if (/^test:/m.test(files.Makefile ?? '')) return 'make test'
+  // A beginner's folder often has test files and no config at all.
+  if (names.some(name => /(^|\/)(test_[^/]+|[^/]+_test)\.py$/.test(name))) return 'pytest'
+  if (names.some(name => /_test\.go$/.test(name))) return 'go test ./...'
 
   return undefined
 }

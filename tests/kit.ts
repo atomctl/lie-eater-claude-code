@@ -39,6 +39,8 @@ export type Seen = {
 
 export type World = {
   files?: Record<string, string>
+  /** File names in the project's folder, and in its `tests` folder under the key `tests`. */
+  dirs?: { root?: string[]; tests?: string[] }
   label?: () => string | Promise<string>
   /** How long the sound takes; left out, it ends at once. */
   sound?: () => Promise<void>
@@ -104,6 +106,12 @@ export function world(on: On, opts: World = {}): Seen {
     }
 
     return { value: text }
+  })
+  on('fs.list', (_, e) => {
+    const folder = named(e.path ?? '')
+    const names = (folder === 'tests' || folder === 'test' ? opts.dirs?.tests : opts.dirs?.root) ?? []
+
+    return { value: names.map(name => ({ name, kind: 'file' as const, size: 0, mtimeMs: 0, isLink: false })) }
   })
   on('fs.write', (_, e) => {
     seen.written[e.path] = e.text
