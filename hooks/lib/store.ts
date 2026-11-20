@@ -3,14 +3,16 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Bet, Ruling, Terms, ToolRecord } from '../../types'
+import type { Bet, Ledger, Ruling, Terms, ToolRecord } from '../../types'
 import { appendRecord, nextMeta, toRawCall } from './intake'
+import { EMPTY_LEDGER } from './ledger'
 import { META_START, SHAPE } from './state'
 
 const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
 const terms = atom({ plugin: 'lie-eater', key: 'terms' } as const, null, { shape: SHAPE.terms })
 const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { shape: SHAPE.rulings })
 const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SHAPE.bets })
+const ledger = atom({ plugin: 'lie-eater', key: 'ledger' } as const, EMPTY_LEDGER, { shape: SHAPE.ledger })
 const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
 
 /** Records one finished tool call and hands back the record. */
@@ -45,6 +47,7 @@ export type PaneView = {
   list: readonly ToolRecord[]
   bets: readonly Bet[]
   unbet: number
+  ledger: Ledger
   note: string | undefined
 }
 
@@ -61,10 +64,7 @@ export async function paneView($: EngineInterface): Promise<PaneView> {
     list: await read($, records),
     bets: await read($, bets),
     unbet,
+    ledger: await read($, ledger),
     note,
   }
-}
-
-export async function isRefereePresent($: EngineInterface): Promise<boolean> {
-  return (await read($, terms))?.state === 'in play'
 }

@@ -42,6 +42,7 @@ export type Ruling = {
   final: boolean              // true: issued by /rule, or the terms were met
   lie: boolean                // saidDone and not met
   overruled?: boolean
+  debt?: [number, number]     // for a final ruling: open debt before this game, and now
 }
 export type Bet = {
   id: number; turn: number; at: number

@@ -1,17 +1,19 @@
 import type { Register } from 'claude-code'
 
 import { BET_DESCRIPTION, BET_SCHEMA, BET_TOOL, BET_TOOL_FULL, GATE_TEXT, betText } from './lib/bets'
-import { closeBets, openBet, refuseRun, settle, statusText, takeBet } from './lib/betting'
-import { betRows, canFix, diceFace, recordHeader, recordRows, refereeRows, scoreLines } from './lib/face'
+import { closeBets, openBet, refuseRun, settle, takeBet } from './lib/betting'
+import { betRows, canFix, diceFace, houseRows, recordHeader, recordRows, refereeRows, scoreLines } from './lib/face'
 import type { Tone } from './lib/face'
+import { loadLedger, overruleCmd } from './lib/house'
 import { PANE, explainCmd, fix, onRecord, ruleNow, ruleTurn, summonCmd } from './lib/referee'
-import { isRefereePresent, paneView, remember, startTurn } from './lib/store'
+import { paneView, remember, startTurn } from './lib/store'
 
 const COMMANDS = [
   { name: 'summon', description: 'Call the referee: lock the rules before the AI works' },
   { name: 'rule', description: 'Lie Eater: the final ruling now; ends the game' },
   { name: 'fix', description: 'Lie Eater: send the AI back to repair the broken rules' },
   { name: 'explain', description: 'Lie Eater: the last ruling in three plain sentences' },
+  { name: 'overrule', description: 'Lie Eater: overrule the last broken ruling; the debt is cleared' },
   { name: 'lie-eater', description: 'Open the Lie Eater pane' },
 ] as const
 
@@ -39,10 +41,9 @@ export const register: Register = on => {
       isDeferred: false,
     })
 
-    // After a reload in the middle of a game the referee is still present.
-    if (await isRefereePresent($)) {
-      $.ui.status(statusText((await paneView($)).bets))
-    }
+    // What the house remembers about this repository, and the status line
+    // (after a reload in the middle of a game the referee is still present).
+    await loadLedger($)
 
     return next(e)
   })
@@ -51,6 +52,7 @@ export const register: Register = on => {
   on('command.run', { command: 'rule' }, async $ => ({ text: await ruleNow($) }))
   on('command.run', { command: 'fix' }, async $ => ({ text: await fix($) }))
   on('command.run', { command: 'explain' }, async $ => ({ text: await explainCmd($) }))
+  on('command.run', { command: 'overrule' }, async $ => ({ text: await overruleCmd($) }))
   on('command.run', { command: 'lie-eater' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Lie Eater' })
 
@@ -126,7 +128,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const columns = e.props.bodyColumns
-    const { game, ruling, list, bets, unbet, note } = await paneView($)
+    const { game, ruling, list, bets, unbet, ledger, note } = await paneView($)
     const room = game === null ? Math.max(1, (e.viewport?.rows ?? 24) - 4) : 5
 
     return (
@@ -141,7 +143,7 @@ export const register: Register = on => {
             <Text dimColor> or type /fix</Text>
           </Box>
         )}
-        {[...scoreLines(bets, unbet), ...betRows(bets, columns)].map(row => (
+        {[...scoreLines(bets, unbet), ...betRows(bets, columns), ...houseRows(ledger, columns)].map(row => (
           <Text {...TONE[row.tone]}>{row.text.slice(0, columns)}</Text>
         ))}
         <Text dimColor>{recordHeader(list)}</Text>

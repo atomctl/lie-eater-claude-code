@@ -5,13 +5,13 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Ruling, Terms, ToolRecord } from '../../types'
+import { recordRuling, refreshStatus } from './house'
 import { checkNumbers } from './numbers'
 import { META_START, SHAPE } from './state'
 import { bareCommand, detectVerdict, isKept, rule, summon, track } from './terms'
 import { VOICE, explain, repairOrder, rulingText, termsText } from './words'
 
 export const PANE = 'lie-eater'
-export const STATUS_PRESENT = 'Referee present'
 
 // Each file that touches state declares its own atoms (see state.ts).
 const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
@@ -113,7 +113,7 @@ export async function summonCmd($: EngineInterface, args: string): Promise<strin
   // With no surface to draw on (a headless run) the game still starts.
   await $.ui.open({ id: PANE, title: 'Lie Eater' }).catch(() => undefined)
   $.ui.toast(VOICE.summoned)
-  $.ui.status(STATUS_PRESENT)
+  await refreshStatus($)
   thump($)
 
   return [VOICE.summoned, ...termsText(game), GAME_ENDS].join('\n')
@@ -141,7 +141,7 @@ async function addRuling($: EngineInterface, made: Omit<Ruling, 'id' | 'turn' | 
 
 async function endGame($: EngineInterface, game: Terms, state: 'met' | 'ended'): Promise<void> {
   await update($, terms, t => (t !== null && t.id === game.id ? { ...t, state } : t))
-  $.ui.status(undefined)
+  await refreshStatus($)
 }
 
 /** The ruling at the end of a turn. Rules decide every line; the model only says "said done". */
@@ -166,14 +166,18 @@ export async function ruleTurn($: EngineInterface, answer: string): Promise<void
     return
   }
 
+  const final = done === true && met
+  const lie = done === true && !met
+  const debt = await recordRuling($, game, { lines, met, lie, final })
   const ruling = await addRuling($, {
     termsId: game.id,
     lines,
     met,
     fromNowhere,
     saidDone: done,
-    final: done === true && met,
-    lie: done === true && !met,
+    final,
+    lie,
+    ...(debt === undefined ? {} : { debt }),
   })
 
   if (done === null) {
@@ -205,10 +209,12 @@ export async function ruleNow($: EngineInterface): Promise<string> {
   const fromNowhere = latestRuling(await read($, rulings), game.id)?.fromNowhere ?? []
   const lines = rule(game, fromNowhere)
   const met = isKept(lines)
-  await addRuling($, { termsId: game.id, lines, met, fromNowhere, saidDone: null, final: true, lie: false })
+  const debt = await recordRuling($, game, { lines, met, lie: false, final: true })
+  const shown = debt === undefined ? {} : { debt }
+  await addRuling($, { termsId: game.id, lines, met, fromNowhere, saidDone: null, final: true, lie: false, ...shown })
   await endGame($, game, met ? 'met' : 'ended')
 
-  return rulingText(lines, { final: true }).join('\n')
+  return rulingText(lines, { final: true, ...shown }).join('\n')
 }
 
 /** "Fix this": one press sends one repair order, built by rules from the game as it is now. */

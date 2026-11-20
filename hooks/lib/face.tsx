@@ -1,6 +1,7 @@
 // What the pane shows, as plain lines of text with a tone. register.tsx draws them.
-import type { Bet, Ruling, Terms, ToolRecord } from '../../types'
+import type { Bet, Ledger, Ruling, Terms, ToolRecord } from '../../types'
 import { betText, score } from './bets'
+import { openDebt, repoLine, streak } from './ledger'
 import { isKept } from './terms'
 import { VOICE, rulingText, termsText } from './words'
 
@@ -49,11 +50,17 @@ export function refereeRows(game: Terms | null, ruling: Ruling | undefined, colu
   ]
 
   if (ruling !== undefined) {
-    const lines = rulingText(ruling.lines, { final: ruling.final }).filter(line => line !== '')
-    rows.push(...lines.map((text): Row => ({ text, tone: toneOf(text) })))
+    const shown = { final: ruling.final, ...(ruling.debt === undefined ? {} : { debt: ruling.debt }) }
+    const lines = rulingText(ruling.lines, shown).filter(line => line !== '')
 
-    if (ruling.lie) rows.push({ text: VOICE.lie, tone: 'bad' })
-    if (ruling.final) rows.push(ruling.met ? { text: VOICE.kept, tone: 'good' } : { text: VOICE.broken, tone: 'bad' })
+    if (ruling.overruled === true) {
+      // The person has decided: the ruling stays readable, but it no longer speaks.
+      rows.push(...lines.map((text): Row => ({ text, tone: 'quiet' })), { text: '(overruled by the person)', tone: 'quiet' })
+    } else {
+      rows.push(...lines.map((text): Row => ({ text, tone: toneOf(text) })))
+      if (ruling.lie) rows.push({ text: VOICE.lie, tone: 'bad' })
+      if (ruling.final) rows.push(ruling.met ? { text: VOICE.kept, tone: 'good' } : { text: VOICE.broken, tone: 'bad' })
+    }
   }
 
   return rows.map(row => ({ ...row, text: row.text.slice(0, columns) }))
@@ -110,5 +117,18 @@ export function diceFace(now: number): string {
 
 /** "Fix this" is offered while a game is in play and its newest ruling has a broken rule. */
 export function canFix(game: Terms | null, ruling: Ruling | undefined): boolean {
-  return game?.state === 'in play' && ruling !== undefined && !isKept(ruling.lines)
+  return game?.state === 'in play' && ruling !== undefined && ruling.overruled !== true && !isKept(ruling.lines)
+}
+
+/** What the house remembers about this repository: the streak, the record, the debt. */
+export function houseRows(ledger: Ledger, columns: number): Row[] {
+  const record = repoLine(ledger)
+  const debt = openDebt(ledger).length
+  const rows: Row[] = [
+    ...(ledger.games.length === 0 ? [] : [{ text: `Clean games in a row: ${streak(ledger)}`, tone: 'plain' as const }]),
+    ...(record === undefined ? [] : [{ text: record, tone: 'quiet' as const }]),
+    ...(debt === 0 ? [] : [{ text: `Debt: ${debt} open`, tone: 'bad' as const }]),
+  ]
+
+  return rows.map(row => ({ ...row, text: row.text.slice(0, columns) }))
 }

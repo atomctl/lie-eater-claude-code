@@ -5,8 +5,9 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Timer } from 'claude-code'
 
 import type { Bet, Terms, ToolRecord } from '../../types'
-import { betText, closeTurn, isGated, postBet, score, settleBet } from './bets'
-import { STATUS_PRESENT, thump } from './referee'
+import { betText, closeTurn, isGated, postBet, settleBet } from './bets'
+import { debtNote, recordBet, refreshStatus } from './house'
+import { thump } from './referee'
 import { META_START, SHAPE } from './state'
 import { VOICE } from './words'
 
@@ -32,16 +33,6 @@ function stopDice(): void {
   dice = undefined
 }
 
-const settledOf = (list: readonly Bet[]) =>
-  list.filter(b => b.state === 'won' || b.state === 'lost').map(b => ({ confidence: b.confidence, won: b.state === 'won' }))
-
-/** `Referee present · bets 3/4` once a bet has settled. */
-export function statusText(list: readonly Bet[]): string {
-  const s = score(settledOf(list))
-
-  return s === undefined ? STATUS_PRESENT : `${STATUS_PRESENT} · bets ${s.won}/${s.n}`
-}
-
 /** The bet tool: the agent says what it expects of the next run. */
 export async function takeBet($: EngineInterface, input: unknown): Promise<string> {
   if ((await read($, terms))?.state !== 'in play') {
@@ -64,6 +55,9 @@ export async function takeBet($: EngineInterface, input: unknown): Promise<strin
   if (isTaken) {
     await update($, meta, m => ({ ...m, betSeq: betSeq + 1 }))
     rollDice($)
+
+    // A mod cannot add to the system prompt: the bet's reply is where the agent hears of the debt.
+    return `${reply}${await debtNote($)}`
   }
 
   return reply
@@ -115,17 +109,14 @@ export async function settle($: EngineInterface, r: ToolRecord, before: Terms | 
 
   const hadChange = before.lastGatedRun === 0 || before.lastCodeEdit > before.lastGatedRun
   let settled: Bet | undefined
-  let all: readonly Bet[] = []
-  await update($, bets, list => {
-    all = list.map(b => {
+  await update($, bets, list =>
+    list.map(b => {
       const next = settleBet(b, r, hadChange)
       if (next !== b) settled = next
 
       return next
-    })
-
-    return [...all]
-  })
+    }),
+  )
 
   const done = settled as Bet | undefined
 
@@ -141,7 +132,8 @@ export async function settle($: EngineInterface, r: ToolRecord, before: Terms | 
 
   const word = done.state === 'won' ? 'WON' : 'LOST'
   $.ui.toast(`BET ${word}: ${betText(done)}`)
-  $.ui.status(statusText(all))
+  await recordBet($, done)
+  await refreshStatus($)
   if (done.state === 'lost') thump($)
 
   return `Lie Eater: bet #${done.id} ${word}. You said ${betText(done)}. The run: ${done.line ?? ''}.`
