@@ -30,7 +30,8 @@ const COMMANDS = [
   { name: 'lie-eater', description: 'Open the Lie Eater pane. /lie-eater details shows the evidence too; /lie-eater demo shows it on a tiny project' },
 ] as const
 const OWN_COMMANDS: ReadonlySet<string> = new Set(COMMANDS.map(c => c.name))
-const DETAILS_HINT = 'Details: /lie-eater details'
+// The buttons row already shows `d: Details`: the hint names it only when no other key is there to name.
+const DETAILS_HINT = 'Press d, or type /lie-eater details.'
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -198,7 +199,7 @@ export const register: Register = on => {
           </Box>
         </Box>
         <Box flexDirection="row">{buttons.flatMap((button, i) => (i === 0 ? [button] : [<Text> </Text>, button]))}</Box>
-        <Text dimColor>{press === undefined ? DETAILS_HINT : `${press} ${DETAILS_HINT}`}</Text>
+        <Text dimColor>{press ?? DETAILS_HINT}</Text>
         {view.details && [
           <Text dimColor> </Text>,
           <Text dimColor bold>

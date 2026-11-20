@@ -722,9 +722,9 @@ test('under its buttons the pane says how to use them: the key, and the command 
 
   await start($)
   await editFile($, opts.files)
-  expect(await paneLines($)).toContain('Press c, or type /check. Details: /lie-eater details')
+  expect(await paneLines($)).toContain('Press c, or type /check.')
   opts.files['math.test.ts'] = MATH.replace('toBe(3)', 'toBe(true)')
   await betRun($, 'npm test')
   await done($)
-  expect(await paneLines($)).toContain('Press f or a, or type /check or /accept. Details: /lie-eater details')
+  expect(await paneLines($)).toContain('Press f or a, or type /check or /accept.')
 })

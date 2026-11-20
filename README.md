@@ -37,7 +37,7 @@ The AI did not say so.
 "You lied. I ate it."
 
 [ Put it back and fix the work ]  [ Accept this change ]  d: Details
-Press f or a, or type /check or /accept. Details: /lie-eater details
+Press f or a, or type /check or /accept.
 ```
 
 The first button sends the AI back to repair it. The second says the change is right (for example, a test that was itself wrong, a renamed file, or a formatter run). After it the result is `? not checked` until the full check passes again.
@@ -50,7 +50,7 @@ The full check was not run after the last change.
 "No proof. Still hungry."
 
 [ Check again ]  d: Details
-Press c, or type /check. Details: /lie-eater details
+Press c, or type /check.
 ```
 
 The button asks the AI to run the full check and say "done" again.

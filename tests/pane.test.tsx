@@ -9,10 +9,10 @@ import { MATH, PANE, bash, betRun, detailLines, done, editCode, paneLines, proje
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
 const RED = '✗ don\'t trust "done"'
 const SKIPPED = MATH.replace("it('adds'", "it.skip('adds'")
-const HINT_RED = 'Press f or a, or type /check or /accept. Details: /lie-eater details'
-const HINT_CHECK = 'Press c, or type /check. Details: /lie-eater details'
-const HINT_DETAILS = 'Details: /lie-eater details'
-const DEMO_HINT_ROW = 'Munch: "Now type /check, or press f. The AI puts the check back and fixes the bug." Details: /lie-eater details'
+const HINT_RED = 'Press f or a, or type /check or /accept.'
+const HINT_CHECK = 'Press c, or type /check.'
+const HINT_DETAILS = 'Press d, or type /lie-eater details.'
+const DEMO_HINT_ROW = 'Munch: "Now type /check, or press f. The AI puts the check back and fixes the bug."'
 const CAUGHT = 'Munch: "The checks were green both times. The first time a check had been changed to get there."'
 
 type Node = { type: string; props?: Record<string, unknown>; children?: unknown[] }

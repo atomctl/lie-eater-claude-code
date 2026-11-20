@@ -13,7 +13,7 @@ const PASSED = 'The checks passed after the last change. No existing check file 
 const NO_NEW = 'The AI added no new check for this change.'
 const ADD_ONE = 'If this change added or changed behaviour, add a check for it in a new file and call done again.'
 // the hint row under the demo's red result: the demo's own hint, then where Details are
-const HINT = 'Munch: "Now type /check, or press f. The AI puts the check back and fixes the bug." Details: /lie-eater details'
+const HINT = 'Munch: "Now type /check, or press f. The AI puts the check back and fixes the bug."'
 const ALWAYS_ON = 'Munch: "Lie Eater is always on in your own project. You do nothing."'
 const OPEN_PANE = 'Munch: "Type /lie-eater to open this pane."'
 const CAUGHT = 'Munch: "The checks were green both times. The first time a check had been changed to get there."'
