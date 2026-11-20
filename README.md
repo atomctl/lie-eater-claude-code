@@ -188,7 +188,7 @@ In Lie Eater no model takes part in a ruling. Rules decide every line and every 
 
 - **The referee catches the lazy shortcut, not a forger.** It reads what the tools print. An AI that fakes a test summary on purpose (a silent runner next to a prepared file) can pass rule 1. Every command is in the record.
 - **A test changed through the shell is not measured.** Rules 2 to 4 count what the Edit and Write tools change. `sed -i`, a heredoc or a script that rewrites a test file makes an earlier run stale, but what it took out of the file is not counted.
-- **LIE EATEN does not ask whether the AI hid the breach.** "Done, and I skipped one test" is called a lie like a plain "done".
+- **LIE EATEN does not ask yet whether the AI hid the breach.** "Done, and I skipped one test" is called a lie like a plain "done". The next version keeps the word "lie" for a breach that the AI did not name.
 - **The record is read, never re-run.** Lie Eater sees the test output the AI saw. It does not run your tests again.
 - **A test command the referee does not know** (`make ci`, `python manage.py test`) is read by how it exits. Behind a pipe it is not read: the game says NOT PROVEN, and the AI is told to run it by itself.
 - **An `rm` is read from the command line.** `find … -delete`, `xargs rm` or a script that removes test files is not seen. A test file renamed by "write the new one, remove the old one" counts as deleted.
