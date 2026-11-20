@@ -36,7 +36,7 @@ So the rule in the plan is right: a piped test run with no counts in its output 
 {"probe":"void-after-turn","label":"does not say that","answer":"The probe tool returned only \"ok\", so there's no probe word.…"}
 ```
 
-**5. Tests importing `../hooks/lib/x`, and `console.log` in `claude plugin test`:** open, answered in Task 2 with the first real test file.
+**5. May a test file import `../hooks/lib/x`? Yes.** `tests/record.test.ts` imports `../hooks/lib/record` and `./helpers`, and its 10 tests run. The command is `claude plugin test <dir>` with no option before `plugin` (a shell alias that adds one makes it refuse to run). `console.log` output was not needed and not checked.
 
 **6. Sound, pane close, colours.** From the types: `$.ui.close` exists; `Text` takes `color`, `dimColor`, `bold`, `inverse`. `afplay sounds/stamp.wav` plays on this Mac. Whether `$.audio.play({ asset })` plays inside a session: interactive check, open.
 
