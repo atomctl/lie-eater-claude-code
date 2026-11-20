@@ -134,8 +134,8 @@ export function packageTestScript(text: string | undefined): string | undefined 
 
 /**
  * The `test` script when running it directly is the same run as `npm test`:
- * it is one command, no `pretest` or `posttest` script runs with it, and no
- * value is set in front.
+ * it is one command, no `pretest` or `posttest` script runs with it, and it
+ * sets no value for the run (`CI=1 …`, `env CI=1 …`, `cross-env …`).
  */
 export function packageShortcut(text: string | undefined): string | undefined {
   const script = packageTestScript(text)
@@ -143,7 +143,7 @@ export function packageShortcut(text: string | undefined): string | undefined {
   try {
     const { pretest, posttest } = (JSON.parse(text ?? '') as { scripts?: Record<string, unknown> }).scripts ?? {}
 
-    const isWhole = script !== undefined && isAlone(script) && pretest === undefined && posttest === undefined && !/^\s*[A-Za-z_]\w*=/.test(script)
+    const isWhole = script !== undefined && isAlone(script) && pretest === undefined && posttest === undefined && !/(?:^|\s)[A-Za-z_]\w*=/.test(script)
 
     return isWhole ? script : undefined
   } catch {

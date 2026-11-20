@@ -309,3 +309,12 @@ test('a chain cannot be named as the full check: only its first command would be
   expect(cannotCheck('pytest | tail')).toBe('|')
   expect(cannotCheck('pytest -q')).toBeUndefined()
 })
+
+// The rating round (20 Nov, GPT 6.2): a value set through a wrapper is part of the script's run too.
+test('the script shortcut does not hold when the script sets a value through `env` or `cross-env`', async () => {
+  for (const script of ['env CI=1 vitest run', 'cross-env NODE_ENV=test vitest run', 'npx cross-env CI=1 jest']) {
+    expect(`${script}: ${packageShortcut(JSON.stringify({ scripts: { test: script } }))}`).toBe(`${script}: undefined`)
+  }
+  // a flag with a value is no value set for the run
+  expect(packageShortcut('{"scripts":{"test":"vitest run --reporter=dot"}}')).toBe('vitest run --reporter=dot')
+})
