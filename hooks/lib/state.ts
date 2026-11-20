@@ -22,5 +22,6 @@ export const SHAPE = {
   records: 'records-1',
   terms: 'terms-1',
   rulings: 'rulings-1',
+  bets: 'bets-1',
   meta: 'meta-1',
 } as const

@@ -31,6 +31,8 @@ export type Seen = {
   prompts: { text: string; asUser: boolean }[]
   classified: number
   written: Record<string, string>
+  tools: { name: string; inputSchema?: unknown; isDeferred?: unknown }[]
+  redraws: number
   /** Lets the mod's timers run: a prompt the mod sends goes out a moment later. */
   tick: () => Promise<void>
 }
@@ -54,11 +56,23 @@ export function world(on: On, opts: World = {}): Seen {
     prompts: [],
     classified: 0,
     written: {},
+    tools: [],
+    redraws: 0,
     tick: () => clock.advance(5),
   }
   const files = opts.files ?? {}
   const named = (path: string) => path.split('/').at(-1) ?? path
   on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => {
+    seen.tools.push(e)
+
+    return { value: { tool: `mcp__lie-eater__${e.name}` } }
+  })
+  on('ui.invalidate', () => {
+    seen.redraws += 1
+
+    return { value: undefined }
+  })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('ui.open', () => {
     seen.opens += 1
@@ -134,5 +148,13 @@ export async function paneWhen($: Engine, ready: (lines: string[]) => boolean): 
 
 export const run = ($: Engine, command: string, args = '') => $.command.run({ command, args } as never)
 export const bash = ($: Engine, command: string) => $.tool.call({ tool: 'Bash', command })
+export const bet = ($: Engine, expect: 'pass' | 'fail' = 'pass', confidence = expect === 'pass' ? 0.9 : 0.55) =>
+  $.tool.call({ tool: 'mcp__lie-eater__bet', expect, confidence } as never)
+/** A bet, then the run: while a referee is present a test run needs its bet. */
+export const betRun = async ($: Engine, command: string, expect: 'pass' | 'fail' = 'pass') => {
+  await bet($, expect)
+
+  return bash($, command)
+}
 export const endTurn = ($: Engine, answer: string, more: Record<string, unknown> = {}) =>
   $.turn.complete({ answer, reason: 'answer', durationMs: 1, isAborted: false, turnId: 't1', ...more } as never)

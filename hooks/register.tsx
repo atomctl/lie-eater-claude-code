@@ -1,8 +1,10 @@
 import type { Register } from 'claude-code'
 
-import { canFix, recordHeader, recordRows, refereeRows } from './lib/face'
+import { BET_DESCRIPTION, BET_SCHEMA, BET_TOOL, BET_TOOL_FULL, GATE_TEXT, betText } from './lib/bets'
+import { closeBets, openBet, refuseRun, settle, statusText, takeBet } from './lib/betting'
+import { betRows, canFix, diceFace, recordHeader, recordRows, refereeRows, scoreLines } from './lib/face'
 import type { Tone } from './lib/face'
-import { PANE, STATUS_PRESENT, explainCmd, fix, onRecord, ruleNow, ruleTurn, summonCmd } from './lib/referee'
+import { PANE, explainCmd, fix, onRecord, ruleNow, ruleTurn, summonCmd } from './lib/referee'
 import { isRefereePresent, paneView, remember, startTurn } from './lib/store'
 
 const COMMANDS = [
@@ -27,9 +29,19 @@ export const register: Register = on => {
       await $.command.register(command)
     }
 
+    // A mod cannot add to the system prompt, and a tool registered later is not
+    // proven to reach the agent: the bet tool is always there, and says so when
+    // no referee is present.
+    await $.tool.register({
+      name: BET_TOOL,
+      description: BET_DESCRIPTION,
+      inputSchema: BET_SCHEMA,
+      isDeferred: false,
+    })
+
     // After a reload in the middle of a game the referee is still present.
     if (await isRefereePresent($)) {
-      $.ui.status(STATUS_PRESENT)
+      $.ui.status(statusText((await paneView($)).bets))
     }
 
     return next(e)
@@ -56,13 +68,29 @@ export const register: Register = on => {
   // The recorder only watches. A fault in it must never touch the call:
   // the handler replays what the call settled to.
   on('tool.call', async ($, e, next) => {
+    const input = e as unknown as Record<string, unknown>
+
+    if (input.tool === BET_TOOL_FULL) {
+      return { result: await takeBet($, input) }
+    }
+
+    // The one thing the mod ever refuses: a test or build run with no bet,
+    // while a referee is present.
+    if (await refuseRun($, input)) {
+      return { deny: GATE_TEXT }
+    }
+
     const ran = await next(e)
 
     if (ran.deny === undefined) {
-      const made = await remember($, e as unknown as Record<string, unknown>, ran)
+      const made = await remember($, input, ran)
 
       if (made !== undefined) {
-        await onRecord($, made)
+        const line = await settle($, made, await onRecord($, made))
+
+        if (line !== undefined) {
+          return { ...ran, context: [...(ran.context ?? []), line] }
+        }
       }
     }
 
@@ -73,17 +101,32 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const out = await next(e)
 
-    if (e.agentId === undefined && e.reason === 'answer') {
-      void ruleTurn($, e.answer).catch(() => undefined)
+    if (e.agentId === undefined) {
+      await closeBets($)
+
+      if (e.reason === 'answer') {
+        void ruleTurn($, e.answer).catch(() => undefined)
+      }
     }
 
     return out
   })
 
+  // The dice: while a bet is open the spinner row shows it.
+  on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
+    const bet = await openBet($)
+
+    if (bet === undefined) {
+      return next(e)
+    }
+
+    return next({ ...e, props: { ...e.props, word: `${diceFace(Date.now())} bet open: ${betText(bet)}` } })
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const columns = e.props.bodyColumns
-    const { game, ruling, list, note } = await paneView($)
+    const { game, ruling, list, bets, unbet, note } = await paneView($)
     const room = game === null ? Math.max(1, (e.viewport?.rows ?? 24) - 4) : 5
 
     return (
@@ -98,6 +141,9 @@ export const register: Register = on => {
             <Text dimColor> or type /fix</Text>
           </Box>
         )}
+        {[...scoreLines(bets, unbet), ...betRows(bets, columns)].map(row => (
+          <Text {...TONE[row.tone]}>{row.text.slice(0, columns)}</Text>
+        ))}
         <Text dimColor>{recordHeader(list)}</Text>
         {recordRows(list.slice(-room), columns).map(row => (
           <Text dimColor>{row}</Text>

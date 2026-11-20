@@ -1,5 +1,6 @@
 // What the pane shows, as plain lines of text with a tone. register.tsx draws them.
-import type { Ruling, Terms, ToolRecord } from '../../types'
+import type { Bet, Ruling, Terms, ToolRecord } from '../../types'
+import { betText, score } from './bets'
 import { isKept } from './terms'
 import { VOICE, rulingText, termsText } from './words'
 
@@ -56,6 +57,55 @@ export function refereeRows(game: Terms | null, ruling: Ruling | undefined, colu
   }
 
   return rows.map(row => ({ ...row, text: row.text.slice(0, columns) }))
+}
+
+const BET_WORD: Record<Bet['state'], string> = { open: 'OPEN', won: 'WON', lost: 'LOST', void: 'VOID' }
+const BET_TONE: Record<Bet['state'], Tone> = { open: 'plain', won: 'good', lost: 'bad', void: 'quiet' }
+const BETS_SHOWN = 3
+
+/** The newest bets, two lines each: what was said, then how it ended. */
+export function betRows(bets: readonly Bet[], columns: number): Row[] {
+  return bets
+    .slice(-BETS_SHOWN)
+    .reverse()
+    .flatMap((b): Row[] => [
+      { text: `#${b.id} ${betText(b)}`, tone: 'plain' },
+      { text: `    ${BET_WORD[b.state]}${b.line === undefined ? '' : ` · ${b.line}`}`, tone: BET_TONE[b.state] },
+    ])
+    .map(row => ({ ...row, text: row.text.slice(0, columns) }))
+}
+
+/** The score in plain words, and the counts under it. */
+export function scoreLines(bets: readonly Bet[], unbet: number): Row[] {
+  const settled = bets.filter(b => b.state === 'won' || b.state === 'lost')
+  const voids = bets.filter(b => b.state === 'void').length
+  const s = score(settled.map(b => ({ confidence: b.confidence, won: b.state === 'won' })))
+
+  if (s === undefined && voids === 0 && unbet === 0) {
+    return []
+  }
+
+  const counts = `Bets: ${s?.won ?? 0} won, ${s?.lost ?? 0} lost${voids === 0 ? '' : `, ${voids} void`}`
+  const noBet = unbet === 0 ? '' : ` · ${unbet} ${unbet === 1 ? 'run' : 'runs'} without a bet`
+
+  return [
+    ...(s === undefined
+      ? []
+      : [
+          {
+            text: `The AI said "${Math.round(s.said * 100)}% sure". It was right ${s.won} of ${s.n} times.`,
+            tone: 'plain' as const,
+          },
+        ]),
+    { text: `${counts}${noBet}`, tone: 'quiet' },
+  ]
+}
+
+const FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅']
+
+/** A new face every quarter of a second. */
+export function diceFace(now: number): string {
+  return FACES[Math.floor(now / 250) % FACES.length] ?? '⚀'
 }
 
 /** "Fix this" is offered while a game is in play and its newest ruling has a broken rule. */

@@ -44,7 +44,7 @@ const latestRuling = (list: readonly Ruling[], termsId: number): Ruling | undefi
 
 // The sound is a nicety (macOS only): nothing waits for it, and a failed play
 // must not stop a ruling.
-function thump($: EngineInterface): void {
+export function thump($: EngineInterface): void {
   void $.audio.play({ asset: 'sounds/stamp.wav' }).catch(() => undefined)
 }
 
@@ -119,9 +119,15 @@ export async function summonCmd($: EngineInterface, args: string): Promise<strin
   return [VOICE.summoned, ...termsText(game), GAME_ENDS].join('\n')
 }
 
-/** Takes a new record into the game in play. */
-export async function onRecord($: EngineInterface, r: ToolRecord): Promise<void> {
+/**
+ * Takes a new record into the game in play. Hands back the game as it was
+ * before this record: a bet is settled against what was known until then.
+ */
+export async function onRecord($: EngineInterface, r: ToolRecord): Promise<Terms | undefined> {
+  const before = await read($, terms)
   await update($, terms, t => (inPlay(t) ? track(t, r) : t))
+
+  return inPlay(before) ? before : undefined
 }
 
 async function addRuling($: EngineInterface, made: Omit<Ruling, 'id' | 'turn' | 'at'>): Promise<Ruling> {

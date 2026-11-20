@@ -3,13 +3,14 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Ruling, Terms, ToolRecord } from '../../types'
+import type { Bet, Ruling, Terms, ToolRecord } from '../../types'
 import { appendRecord, nextMeta, toRawCall } from './intake'
 import { META_START, SHAPE } from './state'
 
 const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
 const terms = atom({ plugin: 'lie-eater', key: 'terms' } as const, null, { shape: SHAPE.terms })
 const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { shape: SHAPE.rulings })
+const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SHAPE.bets })
 const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
 
 /** Records one finished tool call and hands back the record. */
@@ -42,6 +43,8 @@ export type PaneView = {
   game: Terms | null
   ruling: Ruling | undefined
   list: readonly ToolRecord[]
+  bets: readonly Bet[]
+  unbet: number
   note: string | undefined
 }
 
@@ -50,11 +53,15 @@ export async function paneView($: EngineInterface): Promise<PaneView> {
   const game = await read($, terms)
   const all = await read($, rulings)
 
+  const { note, unbet } = await read($, meta)
+
   return {
     game,
     ruling: game === null ? undefined : all.findLast(r => r.termsId === game.id),
     list: await read($, records),
-    note: (await read($, meta)).note,
+    bets: await read($, bets),
+    unbet,
+    note,
   }
 }
 

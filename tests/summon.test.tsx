@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DONE, NOT_DONE, bash, endTurn, paneLines, paneWhen, run, world } from './kit'
+import { DONE, NOT_DONE, bash, betRun, endTurn, paneLines, paneWhen, run, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed' })
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
@@ -76,7 +76,7 @@ test('said done with a failed run: a lie is eaten and the game goes on', async (
   on('tool.call', failing)
 
   await run($, 'summon', 'npm test')
-  await bash($, 'npm test')
+  await betRun($, 'npm test', 'fail')
   await endTurn($, 'All tests pass. The work is done.')
   const lines = await paneWhen($, l => has(l, 'RULING'))
 
@@ -99,7 +99,7 @@ test('the turn ends before the model answers', async ($, on) => {
   on('tool.call', failing)
 
   await run($, 'summon', 'npm test')
-  await bash($, 'npm test')
+  await betRun($, 'npm test', 'fail')
   const out = await endTurn($, 'All tests pass. The work is done.')
 
   expect(out).toMatchObject({ text: 'All tests pass. The work is done.' })
@@ -113,7 +113,7 @@ test('said done with the rules kept: the game ends by itself', async ($, on) => 
   on('tool.call', passing)
 
   await run($, 'summon', 'npm test')
-  await bash($, 'npm test')
+  await betRun($, 'npm test')
   await endTurn($, 'Fixed. All 34 tests pass.')
   const lines = await paneWhen($, l => has(l, 'VERDICT'))
 
@@ -130,12 +130,12 @@ test('not said done: the ruling is shown as "so far", with no toast', async ($, 
   on('tool.call', failing)
 
   await run($, 'summon', 'npm test')
-  await bash($, 'npm test')
+  await betRun($, 'npm test', 'fail')
   await endTurn($, 'One test still fails. Shall I look at the parser?')
   const lines = await paneWhen($, l => has(l, 'RULING'))
 
   expect(has(lines, 'RULING so far: 3 of 4 rules kept')).toBe(true)
-  expect(seen.toasts).toEqual(['The referee is present. The rules are locked.'])
+  expect(seen.toasts.some(t => t.startsWith('LIE EATEN') || t === 'RULES KEPT')).toBe(false)
   expect(seen.sounds).toBe(1)
 })
 
@@ -148,7 +148,7 @@ test('no answer from the model: "so far", a note, no crash', async ($, on) => {
   on('tool.call', failing)
 
   await run($, 'summon', 'npm test')
-  await bash($, 'npm test')
+  await betRun($, 'npm test', 'fail')
   await endTurn($, 'All tests pass. The work is done.')
   const lines = await paneWhen($, l => has(l, 'RULING'))
 
@@ -161,7 +161,7 @@ test('a turn that did not end with an answer, and a subagent turn, get no ruling
   on('tool.call', failing)
 
   await run($, 'summon', 'npm test')
-  await bash($, 'npm test')
+  await betRun($, 'npm test', 'fail')
   await endTurn($, 'All tests pass. The work is done.', { reason: 'aborted', isAborted: true })
   await endTurn($, 'All tests pass. The work is done.', { reason: 'error' })
   await endTurn($, 'All tests pass. The work is done.', { agentId: 'a1' })
@@ -175,7 +175,7 @@ test('a number with no source is a note and does not break the game', async ($, 
   on('tool.call', passing)
 
   await run($, 'summon', 'npm test')
-  await bash($, 'npm test')
+  await betRun($, 'npm test')
   await endTurn($, 'Done. All tests pass and accuracy is now 0.97.')
   const lines = await paneWhen($, l => has(l, 'VERDICT'))
 
@@ -190,7 +190,7 @@ test('/rule ends the game now', async ($, on) => {
 
   expect((await run($, 'rule')).text).toBe('No referee is present. Type /summon to call one.')
   await run($, 'summon', 'npm test')
-  await bash($, 'npm test')
+  await betRun($, 'npm test', 'fail')
   const out = await run($, 'rule')
 
   expect(out.text?.split('\n').at(-1)).toBe('VERDICT: RULES BROKEN.')
@@ -206,7 +206,7 @@ test('a long session: the ruling does not depend on the 200-call window', async 
 
   await run($, 'summon', 'npm test')
   await $.tool.call({ tool: 'Edit', file_path: 'src/a.ts', old_string: 'a', new_string: 'b' })
-  await bash($, 'npm test')
+  await betRun($, 'npm test')
   for (let i = 0; i < 205; i += 1) {
     await bash($, `ls ${i}`)
   }
@@ -224,9 +224,9 @@ test('a reload in the middle of a game keeps the referee', async ($, on) => {
 
   await run($, 'summon', 'npm test')
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await bash($, 'npm test')
+  await betRun($, 'npm test', 'fail')
 
-  expect(seen.status.at(-1)).toBe('Referee present')
+  expect(seen.status.at(-1)).toBe('Referee present · bets 1/1')
   expect((await run($, 'rule')).text).toContain('npm test, call 1')
 })
 
@@ -236,7 +236,7 @@ test('Fix this sends the repair order as the person, three times at most', async
 
   expect((await run($, 'fix')).text).toBe('Nothing to fix.')
   await run($, 'summon', 'npm test')
-  await bash($, 'npm test')
+  await betRun($, 'npm test', 'fail')
   await endTurn($, 'All tests pass. The work is done.')
   await paneWhen($, l => has(l, 'RULING'))
 
@@ -272,11 +272,12 @@ test('Fix this rules again at the press: a repaired rule is not in the order', a
   on('tool.call', () => (isFixed ? passing() : failing()))
 
   await run($, 'summon', 'npm test')
-  await bash($, 'npm test')
+  await betRun($, 'npm test', 'fail')
   await endTurn($, 'All tests pass. The work is done.')
   await paneWhen($, l => has(l, 'RULING'))
   isFixed = true
-  await bash($, 'npm test')
+  await $.tool.call({ tool: 'Edit', file_path: 'src/a.ts', old_string: 'a', new_string: 'b' })
+  await betRun($, 'npm test')
 
   expect((await run($, 'fix')).text).toBe('Nothing to fix.')
   expect(seen.prompts).toHaveLength(0)
@@ -290,7 +291,7 @@ test('/explain says what happened in plain words', async ($, on) => {
     'No game has been ruled yet. Type /summon before you give the AI a task.',
   )
   await run($, 'summon', 'npm test')
-  await bash($, 'npm test')
+  await betRun($, 'npm test', 'fail')
   await endTurn($, 'All tests pass. The work is done.')
   await paneWhen($, l => has(l, 'RULING'))
 
@@ -310,7 +311,7 @@ test('/rule while the turn is still being ruled: the final ruling stands, no lat
   on('tool.call', failing)
 
   await run($, 'summon', 'npm test')
-  await bash($, 'npm test')
+  await betRun($, 'npm test', 'fail')
   await endTurn($, 'All tests pass. The work is done.')
   await run($, 'rule')
   release(DONE)
