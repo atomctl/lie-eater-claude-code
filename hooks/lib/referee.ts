@@ -9,8 +9,8 @@ import { recordRuling, refreshStatus, writeReceipts } from './house'
 import { checkNumbers } from './numbers'
 import { RECEIPTS_JSON } from './receipts'
 import { META_START, SHAPE } from './state'
-import { bareCommand, detectVerdict, isKept, rule, summon, track } from './terms'
-import { VOICE, explain, repairOrder, rulingText, termsText } from './words'
+import { detectVerdict, isKept, packageTestScript, plainCommand, rule, summon, track } from './terms'
+import { VOICE, explain, isOldFailure, repairOrder, rulingText, termsText } from './words'
 
 export const PANE = 'lie-eater'
 
@@ -68,13 +68,14 @@ async function projectFiles($: EngineInterface): Promise<Record<string, string |
 function verdictFromRecord(list: readonly ToolRecord[]): string | undefined {
   return list
     .filter(r => r.kind === 'test')
-    .map(r => bareCommand(r.target))
+    .map(r => plainCommand(r.target))
     .findLast(command => !/[|;&]/.test(command))
 }
 
 /** The one question a model answers. It reads the agent's words; it never rules. */
 export async function saidDone($: EngineInterface, answer: string): Promise<boolean | null> {
-  if (answer.trim().length < 20) {
+  // Only an empty or one-word answer is skipped: "All tests pass now." is 19 characters.
+  if (answer.trim().length < 4) {
     return false
   }
 
@@ -101,14 +102,15 @@ export async function summonCmd($: EngineInterface, args: string): Promise<strin
   }
 
   const list = await read($, records)
-  const verdict = asked !== '' ? asked : (verdictFromRecord(list) ?? detectVerdict(await projectFiles($)))
+  const files = await projectFiles($)
+  const verdict = asked !== '' ? asked : (verdictFromRecord(list) ?? detectVerdict(files))
 
   if (verdict === undefined) {
     return NO_TESTS
   }
 
   const { termsSeq } = await read($, meta)
-  const game = summon(verdict, { id: termsSeq + 1, at: await $.clock.now() }, list)
+  const game = summon(verdict, { id: termsSeq + 1, at: await $.clock.now() }, list, packageTestScript(files['package.json']))
   await update($, terms, () => game)
   await update($, meta, m => ({ ...m, termsSeq: game.id, note: undefined }))
   // With no surface to draw on (a headless run) the game still starts.
@@ -162,13 +164,19 @@ export async function ruleTurn($: EngineInterface, answer: string): Promise<void
   const worked = game.lastCodeEdit > game.startRecord || game.lastGatedRun > game.startRecord
   const done = worked ? await saidDone($, answer) : false
 
-  // The model takes a moment. If /rule ended the game meanwhile, its ruling stands.
-  if (!inPlay(await read($, terms))) {
+  // The model takes a moment. If /rule ended the game meanwhile, its ruling
+  // stands; and a ruling never lands on a game that was summoned after it.
+  const now = await read($, terms)
+
+  if (!inPlay(now) || now.id !== game.id) {
     return
   }
 
   const final = done === true && met
-  const lie = done === true && !met
+  // Tests that failed before the game and still fail are a broken rule, but
+  // "done" with them is not a lie: the agent hid nothing.
+  const onlyOldFailures = lines.filter(l => !l.pass && !l.soft).every(isOldFailure)
+  const lie = done === true && !met && !onlyOldFailures
   const debt = await recordRuling($, game, { lines, met, lie, final })
   const ruling = await addRuling($, {
     termsId: game.id,

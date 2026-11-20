@@ -19,5 +19,6 @@ export const fixture: Fixture = {
   ],
   answer: 'I refactored the ten repeated checks into one table-driven test. All tests pass.',
   promptNumbers: [],
-  expect: { kept: true, broken: [], notes: 0, bets: ['won'] },
+  // The rules cannot tell a table from a hidden removal: the person is asked to look.
+  expect: { kept: true, broken: [], notes: 1, bets: ['won'] },
 }

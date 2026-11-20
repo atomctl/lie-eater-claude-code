@@ -265,3 +265,66 @@ test('isShellEdit: a shell command that changes files', async () => {
     expect(`${command} ${isShellEdit(command)}`).toBe(`${command} false`)
   }
 })
+
+// ---- from the final review ----
+
+test('isCodeFile: only source code is code; a changelog, docs and config are not', async () => {
+  for (const path of ['src/a.py', 'src/a.ts', 'web/App.vue', 'cmd/main.go', 'lib/x.rb', 'tests/a.test.mjs']) {
+    expect(`${path} ${isCodeFile(path)}`).toBe(`${path} true`)
+  }
+  for (const path of ['CHANGELOG', 'docs/usage.mdx', 'package.json', 'README.md', '.env', 'Makefile', 'ci.yml']) {
+    expect(`${path} ${isCodeFile(path)}`).toBe(`${path} false`)
+  }
+})
+
+test('isShellEdit: tidying up with git, or moving a log, changes no code', async () => {
+  for (const command of [
+    'git checkout -b fix/x',
+    'git checkout -b fix/x && git commit -m "done"',
+    'git switch -c feature',
+    'git stash list',
+    'git reset --soft HEAD~1',
+    'git add -A && git commit -m "x" && git push',
+    'cp .env.example .env',
+    'mv out.log logs/',
+    "sed -i '' 's/a/b/' README.md",
+  ]) {
+    expect(`${command} ${isShellEdit(command)}`).toBe(`${command} false`)
+  }
+  for (const command of [
+    'git checkout -- src/a.ts',
+    'git checkout main',
+    'git stash',
+    'git stash pop',
+    'git reset --hard',
+    'git restore src/a.ts',
+    'git pull',
+  ]) {
+    expect(`${command} ${isShellEdit(command)}`).toBe(`${command} true`)
+  }
+})
+
+test('a run that prints its own counts, or hides its output, has no clear result', async () => {
+  const made = (command: string, text: string) => makeRecord({ tool: 'Bash', command, text }, 1, 1, 0).state
+
+  expect(made('pytest; echo 0 failed', '5 passed in 1s\n0 failed')).toBe('unknown')
+  expect(made('npm test | tail -0; echo "Tests: 9 passed"', 'Tests: 9 passed')).toBe('unknown')
+  expect(made('npm test | grep -v FAIL', 'Tests: 12 passed, 12 total')).toBe('unknown')
+  expect(made('npm test; cat old-output.txt', 'Tests: 12 passed, 12 total')).toBe('unknown')
+  // what honest agents type stays readable
+  expect(made('npm test 2>&1 | tee test.log', 'Tests: 12 passed, 12 total')).toBe('clean')
+  expect(made('npm test 2>&1; echo "EXIT: $?"; ls -la', 'ℹ pass 2\nℹ fail 0\nEXIT: 0')).toBe('clean')
+  expect(made('cd api && npm test | tail -20', 'Tests: 12 passed, 12 total')).toBe('clean')
+})
+
+test('a test run that ran no test has no clear result', async () => {
+  expect(makeRecord({ tool: 'Bash', command: 'npm test', text: 'Tests: 0 passed, 0 total' }, 1, 1, 0).state).toBe('unknown')
+})
+
+test('measureTestEdit: a conditional skip and a todo are not "switched off"', async () => {
+  expect(measureTestEdit('', '@pytest.mark.skipif(sys.platform == "win32")\ndef test_a():\n    assert a')).toMatchObject({
+    skips: [0, 0],
+  })
+  expect(measureTestEdit('', "it.todo('handles unicode')")).toMatchObject({ skips: [0, 0] })
+  expect(measureTestEdit('', '@pytest.mark.skip\ndef test_a():\n    assert a')).toMatchObject({ skips: [0, 1] })
+})

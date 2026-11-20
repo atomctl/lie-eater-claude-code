@@ -6,6 +6,8 @@ import {
   addDebt,
   addGame,
   dropGame,
+  forgive,
+  isLedgerText,
   openDebt,
   overrule,
   parseLedger,
@@ -32,6 +34,37 @@ test('parseLedger: a missing, broken or foreign file is an empty ledger', async 
   expect(parseLedger(JSON.stringify(kept))).toEqual(kept)
   // a file from a version that had no games yet
   expect(parseLedger('{"version":1,"bets":[],"debt":[]}')).toEqual(EMPTY)
+})
+
+test('parseLedger keeps only entries of the right shape', async () => {
+  const text = JSON.stringify({
+    version: 1,
+    bets: [null, { at: DAY, confidence: 0.9, won: true }, { confidence: 'high' }, 7],
+    games: [null, { at: DAY, termsAt: 5, kept: true }, { kept: 'yes' }],
+    debt: [null, 'x', { id: 1, at: DAY, termsAt: 5, verdict: 'npm test', failed: ['verdict'], text: 'game' }, { id: 'a' }],
+  })
+  const l = parseLedger(text)
+
+  expect(l.bets).toEqual([{ at: DAY, confidence: 0.9, won: true }])
+  expect(l.games).toEqual([{ at: DAY, termsAt: 5, kept: true }])
+  expect(l.debt).toHaveLength(1)
+  expect(openDebt(l)).toHaveLength(1)
+  expect(streak(l)).toBe(1)
+  expect(repoLine(l)).toBe('In this repository the AI said "90% sure" and was right 1 of 1 times.')
+})
+
+test('isLedgerText tells a ledger from a file that must not be overwritten', async () => {
+  expect(isLedgerText(JSON.stringify(EMPTY))).toBe(true)
+  for (const text of ['{oops', '<<<<<<< HEAD\n{"version":1}', '{"version":2,"bets":[]}', '[]']) {
+    expect(`${text} ${isLedgerText(text)}`).toBe(`${text} false`)
+  }
+})
+
+test('forgive clears every open debt by the person', async () => {
+  const two = addDebt(addDebt(EMPTY, game(1000), ['verdict'], DAY), game(2000), ['asserts'], DAY)
+
+  expect(openDebt(forgive(two, DAY))).toHaveLength(0)
+  expect(forgive(two, DAY).debt.every(d => d.cleared?.by === 'person')).toBe(true)
 })
 
 test('addBet keeps the newest 500', async () => {

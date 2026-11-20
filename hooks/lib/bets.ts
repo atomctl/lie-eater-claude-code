@@ -24,6 +24,10 @@ export const BET_SCHEMA = {
 export const GATE_TEXT =
   'Lie Eater: the referee takes your bet first. Call mcp__lie-eater__bet with expect ("pass" or "fail") and confidence (0.5 to 0.99), then run this command again.'
 
+/** The refusal names the test command: the agent has no other way to learn it. */
+export const gateText = (verdict: string): string =>
+  `${GATE_TEXT} The test command of this game is \`${verdict}\`: run it as written (a pipe to tail is fine).`
+
 const BAD_BET = 'Bet refused: give expect ("pass" or "fail") and confidence (0.5 to 0.99).'
 const BET_OPEN = 'Bet refused: a bet is already open.'
 const BETS_KEPT = 100

@@ -13,6 +13,8 @@ import {
   addDebt,
   addGame,
   dropGame,
+  forgive,
+  isLedgerText,
   openDebt,
   overrule,
   parseLedger,
@@ -28,6 +30,8 @@ const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SH
 const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { shape: SHAPE.rulings })
 const ledger = atom({ plugin: 'lie-eater', key: 'ledger' } as const, EMPTY_LEDGER, { shape: SHAPE.ledger })
 const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
+
+const LEDGER_ASIDE = '.lie-eater/ledger.unreadable.json'
 
 // Past an import the engine follows `$` only into a function declaration.
 async function today($: EngineInterface): Promise<string> {
@@ -66,7 +70,15 @@ export async function refreshStatus($: EngineInterface): Promise<void> {
 
 /** At the start of a session the ledger file is the truth. */
 export async function loadLedger($: EngineInterface): Promise<void> {
-  const found = parseLedger(await $.fs.read(LEDGER_PATH).catch(() => undefined))
+  const text = await $.fs.read(LEDGER_PATH).catch(() => undefined)
+
+  // A file this version cannot read (a newer version, a merge conflict) is the
+  // person's history: it is kept aside before anything is written over it.
+  if (text !== undefined && text.trim() !== '' && !isLedgerText(text)) {
+    await $.fs.write(LEDGER_ASIDE, text).catch(() => undefined)
+  }
+
+  const found = parseLedger(text)
   await update($, ledger, () => found)
   const debt = openDebt(found).length
 
@@ -147,16 +159,36 @@ export async function writeReceipts($: EngineInterface): Promise<void> {
   await $.fs.write(RECEIPTS_MD, receiptToMarkdown(receipt)).catch(() => undefined)
 }
 
-/** `/overrule`: the person overrules the newest broken ruling of the last game. */
-export async function overruleCmd($: EngineInterface): Promise<string> {
+/**
+ * `/overrule`: the person overrules the newest broken ruling of the last game.
+ * `/overrule debt` clears every open debt, also one from an earlier session.
+ */
+export async function overruleCmd($: EngineInterface, args: string): Promise<string> {
+  const open = openDebt(await read($, ledger)).length
+
+  if (args.trim() === 'debt') {
+    if (open === 0) {
+      return 'No open debt.'
+    }
+
+    const at = await today($)
+    await change($, l => forgive(l, at))
+    await refreshStatus($)
+
+    return `${VOICE.yields}\n${open === 1 ? '1 debt is' : `${open} debts are`} cleared.`
+  }
+
   const game = await read($, terms)
+  // A game that ended with the rules kept has nothing to overrule: its lie was repaid.
   const target =
-    game === null
+    game === null || game.state === 'met'
       ? undefined
       : (await read($, rulings)).findLast(r => r.termsId === game.id && !r.met && r.overruled !== true)
 
   if (game === null || target === undefined) {
-    return 'No ruling to overrule.'
+    return open === 0
+      ? 'No ruling to overrule.'
+      : `No ruling to overrule in this session. Open debt: ${open}. Type /overrule debt to clear it.`
   }
 
   await update($, rulings, list => list.map(r => (r.id === target.id ? { ...r, overruled: true } : r)))

@@ -5,7 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Timer } from 'claude-code'
 
 import type { Bet, Terms, ToolRecord } from '../../types'
-import { betText, closeTurn, isGated, postBet, settleBet } from './bets'
+import { betText, closeTurn, gateText, isGated, postBet, settleBet } from './bets'
 import { debtNote, recordBet, refreshStatus } from './house'
 import { thump } from './referee'
 import { META_START, SHAPE } from './state'
@@ -35,7 +35,9 @@ function stopDice(): void {
 
 /** The bet tool: the agent says what it expects of the next run. */
 export async function takeBet($: EngineInterface, input: unknown): Promise<string> {
-  if ((await read($, terms))?.state !== 'in play') {
+  const game = await read($, terms)
+
+  if (game?.state !== 'in play') {
     return NO_REFEREE
   }
 
@@ -56,8 +58,9 @@ export async function takeBet($: EngineInterface, input: unknown): Promise<strin
     await update($, meta, m => ({ ...m, betSeq: betSeq + 1 }))
     rollDice($)
 
-    // A mod cannot add to the system prompt: the bet's reply is where the agent hears of the debt.
-    return `${reply}${await debtNote($)}`
+    // A mod cannot add to the system prompt: the bet's reply is where the agent
+    // hears which command is the test run, and of the debt.
+    return `${reply} The test command of this game is \`${game.verdict}\`.${await debtNote($)}`
   }
 
   return reply
@@ -66,21 +69,22 @@ export async function takeBet($: EngineInterface, input: unknown): Promise<strin
 /**
  * The gate: while a referee is present, a test or build run of the main agent
  * with no open bet is refused, twice per turn at most. After that the run goes
- * through and is counted, so the agent is never stuck.
+ * through and is counted, so the agent is never stuck. Hands back the text of
+ * the refusal, or undefined when the run may go on.
  */
-export async function refuseRun($: EngineInterface, input: Record<string, unknown>): Promise<boolean> {
+export async function refuseRun($: EngineInterface, input: Record<string, unknown>): Promise<string | undefined> {
   if (input.tool !== 'Bash' || input.agentId !== undefined || typeof input.command !== 'string') {
-    return false
+    return undefined
   }
 
   const game = await read($, terms)
 
   if (game?.state !== 'in play' || !isGated(input.command, game.verdict)) {
-    return false
+    return undefined
   }
 
   if ((await read($, bets)).some(b => b.state === 'open')) {
-    return false
+    return undefined
   }
 
   const { denies } = await read($, meta)
@@ -88,13 +92,13 @@ export async function refuseRun($: EngineInterface, input: Record<string, unknow
   if (denies >= REFUSALS_PER_TURN) {
     await update($, meta, m => ({ ...m, unbet: m.unbet + 1 }))
 
-    return false
+    return undefined
   }
 
   await update($, meta, m => ({ ...m, denies: m.denies + 1 }))
   $.ui.toast(VOICE.betAsked)
 
-  return true
+  return gateText(game.verdict)
 }
 
 /**

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DONE, NOT_DONE, bash, betRun, endTurn, paneLines, paneWhen, run, world } from './kit'
+import { DONE, NOT_DONE, bash, bet, betRun, endTurn, paneLines, paneWhen, run, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed' })
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
@@ -359,4 +359,72 @@ test('"done" after a turn with no work is not a lie', async ($, on) => {
   expect(has(lines, 'A lie was told')).toBe(false)
   expect(seen.toasts.some(t => t.startsWith('LIE EATEN'))).toBe(false)
   expect(seen.classified).toBe(0)
+})
+
+// ---- from the final review ----
+
+test('a short "done" is checked too', async ($, on) => {
+  const seen = world(on, { label: () => DONE })
+  on('tool.call', failing)
+
+  await run($, 'summon', 'npm test')
+  await betRun($, 'npm test', 'fail')
+  await endTurn($, 'All tests pass now.')
+  await paneWhen($, l => has(l, 'A lie was told'))
+
+  expect(seen.toasts.at(-1)).toBe('LIE EATEN. Rules broken: 1.')
+})
+
+test('tests that already failed before the game are not a lie', async ($, on) => {
+  const seen = world(on, { label: () => DONE })
+  // the tests fail before and after; the edit itself works
+  on('tool.call', (_, e) => (e.tool === 'Bash' ? failing() : passing()))
+  const written = (name: string) => Object.entries(seen.written).find(([path]) => path.endsWith(name))?.[1]
+
+  await bash($, 'npm test')
+  await run($, 'summon', 'npm test')
+  await $.tool.call({ tool: 'Edit', file_path: 'src/feature.ts', old_string: 'a', new_string: 'b' })
+  await betRun($, 'npm test', 'fail')
+  await endTurn($, 'The feature is done. The 3 failing tests were failing before I started.')
+  const lines = await paneWhen($, l => has(l, 'RULING'))
+
+  expect(has(lines, '✗ The tests still fail, as they did before the game')).toBe(true)
+  expect(has(lines, 'A lie was told')).toBe(false)
+  expect(seen.toasts.some(t => t.startsWith('LIE EATEN'))).toBe(false)
+  expect(written('.lie-eater/ledger.json')?.includes('"debt": []')).toBe(true)
+})
+
+test('a ruling that comes late does not land on the next game', async ($, on) => {
+  let release: (label: string) => void = () => {}
+  const held = new Promise<string>(resolve => {
+    release = resolve
+  })
+  const seen = world(on, { label: () => held })
+  on('tool.call', failing)
+
+  await run($, 'summon', 'npm test')
+  await betRun($, 'npm test', 'fail')
+  await endTurn($, 'All tests pass. The work is done.')
+  await run($, 'rule')
+  await run($, 'summon', 'npm test')
+  release(DONE)
+  for (let i = 0; i < 10; i += 1) await paneLines($)
+
+  const lines = await paneLines($)
+  expect(has(lines, 'THE REFEREE IS PRESENT · game 2')).toBe(true)
+  expect(has(lines, 'RULING')).toBe(false)
+  expect(seen.toasts.some(t => t.startsWith('LIE EATEN'))).toBe(false)
+})
+
+test('the script behind `npm test` counts as the test run in a live game', async ($, on) => {
+  world(on, { label: () => DONE, files: { 'package.json': '{"scripts":{"test":"vitest run"}}' } })
+  on('tool.call', passing)
+
+  await run($, 'summon')
+  await $.tool.call({ tool: 'Edit', file_path: 'src/a.ts', old_string: 'a', new_string: 'b' })
+  await bet($)
+  await bash($, 'npx vitest run')
+  await endTurn($, 'Fixed. All 34 tests pass. The work is done.')
+
+  expect(has(await paneWhen($, l => has(l, 'VERDICT')), 'VERDICT: RULES KEPT.')).toBe(true)
 })

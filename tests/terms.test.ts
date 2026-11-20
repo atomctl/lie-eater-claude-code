@@ -149,8 +149,7 @@ test('the rule on removed checks', async () => {
   })
   expect(line([testEdit(1, { asserts: [10, 1], tables: [0, 1] })], 'asserts')).toMatchObject({
     pass: true,
-    plain: 'Checks were moved into a table, none counted as lost',
-    detail: 'tests/a.test.ts: assertions -9, tables +1',
+    plain: 'Checks were moved into a table (see the note)',
   })
   // a new test file only adds
   expect(line([testEdit(1, { asserts: [0, 4], tests: [0, 2] })], 'asserts')?.pass).toBe(true)
@@ -279,7 +278,7 @@ test('tests moved into a table are not deleted tests', async () => {
   expect(line(records, 'tests')).toMatchObject({ pass: true, plain: 'No test was deleted' })
   expect(line(records, 'asserts')).toMatchObject({
     pass: true,
-    plain: 'Checks were moved into a table, none counted as lost',
+    plain: 'Checks were moved into a table (see the note)',
   })
 })
 
@@ -327,4 +326,87 @@ test('records that arrive out of order do not move the game backwards', async ()
   // an edit (#3) and a run (#2) finished side by side and arrive as run, edit ... then an older run
   expect(line([edit(3), run(2)], 'verdict')?.plain).toBe('The code changed after the last test run')
   expect(line([run(5), run(4, 'failed')], 'verdict')?.pass).toBe(true)
+})
+
+// ---- from the final review ----
+
+test('isVerdictRun: flags may stand anywhere, and a runner in front changes nothing', async () => {
+  const yes: [string, string][] = [
+    ['go test -v ./...', 'go test ./...'],
+    ['go test -race -timeout 30s ./...', 'go test ./...'],
+    ['uv run pytest', 'pytest'],
+    ['timeout 600 npm test', 'npm test'],
+    ['pytest tests/', 'pytest'],
+    ['pytest -n auto --tb short', 'pytest'],
+    ['npx vitest run --reporter verbose', 'npx vitest run'],
+    ['pytest', 'pytest -q'],
+  ]
+  for (const [command, verdict] of yes) {
+    expect(`${command} ${isVerdictRun(command, verdict)}`).toBe(`${command} true`)
+  }
+})
+
+test('isVerdictRun: every quiet way to run fewer tests is another run', async () => {
+  for (const command of [
+    'pytest -kfoo',
+    'pytest --deselect=tests/test_a.py::test_x',
+    'pytest --ignore=tests/slow',
+    'pytest --co',
+    'pytest --collect-only',
+    'pytest tests/test_a.py',
+    'pytest tests/unit',
+  ]) {
+    expect(`${command} ${isVerdictRun(command, 'pytest')}`).toBe(`${command} false`)
+  }
+  expect(isVerdictRun('npm test -- --testPathIgnorePatterns=. --passWithNoTests', 'npm test')).toBe(false)
+  // a filter that is part of the locked command itself is not a narrowing
+  expect(isVerdictRun('pytest -m unit', 'pytest -m unit')).toBe(true)
+})
+
+test('the script behind `npm test` is the test run too', async () => {
+  const game = summon('npm test', { id: 1, at: 0 }, [], 'tsc --noEmit && vitest run')
+  expect(game.also).toBe('vitest run')
+  const played = [rec({ id: 1, kind: 'test', target: 'npx vitest run' })].reduce(track, game)
+  expect(rule(played, [])[0]).toMatchObject({ pass: true, detail: 'npm test, call 1' })
+  expect(summon('npm test', { id: 1, at: 0 }, [], 'echo ok').also).toBeUndefined()
+})
+
+test('tidying up after a green run does not make it stale', async () => {
+  const after = (r: ToolRecord) => line([run(1), r], 'verdict')?.pass
+
+  expect(after(rec({ id: 2, tool: 'Edit', kind: 'edit', target: 'CHANGELOG' }))).toBe(true)
+  expect(after(rec({ id: 2, tool: 'Edit', kind: 'edit', target: 'docs/usage.mdx' }))).toBe(true)
+  expect(after(rec({ id: 2, tool: 'Edit', kind: 'edit', target: 'package.json' }))).toBe(true)
+  expect(after(rec({ id: 2, kind: 'git', target: 'git checkout -b fix/x && git commit -m "done"' }))).toBe(true)
+  expect(after(rec({ id: 2, kind: 'git', target: 'git stash list' }))).toBe(true)
+  expect(after(rec({ id: 2, kind: 'git', target: 'git checkout -- src/a.ts' }))).toBe(false)
+})
+
+test('a skip mark in a test file the agent made in this game is not "switched off"', async () => {
+  const made = rec({
+    id: 1,
+    tool: 'Write',
+    kind: 'write',
+    target: 'tests/test_new.py',
+    testEdit: { asserts: [0, 3], tests: [0, 2], skips: [0, 1], tables: [0, 0], lines: [] },
+  })
+
+  expect(line([made], 'skips')?.pass).toBe(true)
+  // in a file that was there before, it is
+  expect(line([testEdit(1, { skips: [0, 1] })], 'skips')?.pass).toBe(false)
+})
+
+test('checks that went into a table are not counted as removed, and the person is asked to look', async () => {
+  const moved = rule(play([testEdit(1, { asserts: [10, 1], tables: [0, 1], lines: ['expect(price(3)).toBe(6)'] }), run(2)]), [])
+  const hidden = rule(play([testEdit(1, { asserts: [4, 1], tables: [0, 1], lines: ['expect(a).toBe(1)'] }), run(2)]), ['0.86'])
+
+  expect(isKept(moved)).toBe(true)
+  expect(moved.find(l => l.term === 'asserts' && !l.soft)).toMatchObject({ pass: true })
+  expect(moved.find(l => l.term === 'asserts' && l.soft)).toMatchObject({
+    plain: 'Checks were moved into a table',
+    detail: 'tests/a.test.ts: assertions -9, tables +1 · removed: `expect(price(3)).toBe(6)`',
+    why: 'A table can hide a removed check. Look at the removed lines.',
+  })
+  // a table and a number note can both be shown
+  expect(hidden.filter(l => l.soft).map(l => l.term)).toEqual(['asserts', 'numbers'])
 })

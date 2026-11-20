@@ -1,73 +1,123 @@
 // The rules of one game: what is locked at the summon, what is tracked while
 // the agent works, and the ruling. Plain functions; no model, no engine.
 import type { FileNet, RulingLine, Terms, ToolRecord } from '../../types'
-import { chain, isShellEdit } from './commands'
+import { WRAPPERS, chain, classifyCommand, isShellEdit } from './commands'
 import { evidenceLine, isCodeFile, isTestFile } from './record'
 import { LINE } from './words'
 
 const tidy = (command: string): string => command.replace(/\s+/g, ' ').trim()
 
-// Flags that make a test run smaller. A run with one of them is not the verdict run.
-const NARROWS =
-  /^(-k|-m|-t|-o|-run|--grep|--testNamePattern|--testPathPattern|--filter|--only|--onlyChanged|--changed|--lf|--last-failed|--shard|--related)(=|$)/
-
-/**
- * Is the verdict command one of the commands of this chain? Variables in
- * front and flags that do not narrow the run are harmless; a filter or a path
- * makes it a different run. What stands around it (`cd x &&`, `| tail`,
- * `; echo $?`, `|| true`) does not change which run it is: when that hides the
- * exit code, the record's state comes from the counts (see makeRecord).
- */
-export function isVerdictRun(command: string, verdict: string): boolean {
-  const asked = bareCommand(chain(verdict)[0] ?? '').split(' ')
-
-  return chain(command).some(part => {
-    const ran = bareCommand(part).split(' ')
-
-    if (!asked.every((word, i) => ran[i] === word)) {
-      return false
-    }
-
-    return ran.slice(asked.length).every((word, i, extra) => {
-      const isFlag = word.startsWith('-') && !NARROWS.test(word)
-      const isValueOfFlag = /^\d+$/.test(word) && (extra[i - 1] ?? '').startsWith('-')
-
-      return isFlag || isValueOfFlag
-    })
-  })
-}
-
-/**
- * A command in its plain form: no `cd` or variables in front, no pipe to
- * `tail` or `head` behind, and `python -m pytest` and `npm run test` by their
- * short names.
- */
-export function bareCommand(command: string): string {
+/** A command as a person would name it: no `cd` or variables in front, no pipe to `tail` or `head` behind. */
+export function plainCommand(command: string): string {
   return tidy(command)
     .replace(/^cd \S+ && /, '')
     .replace(/^(?:[A-Za-z_]\w*=\S* )+/, '')
     .replace(/ ?\| ?(tail|head)( [^|;&]*)?$/, '')
     .replace(/ 2>&1$/, '')
-    .replace(/^python3? -m pytest\b/, 'pytest')
+}
+
+/** A command reduced for comparing: also without a runner in front, and `npm run test` as `npm test`. */
+export function bareCommand(command: string): string {
+  return plainCommand(command)
+    .replace(WRAPPERS, '')
+    .replace(/ 2>&1$/, '')
     .replace(/^(npm|pnpm|yarn|bun) run test\b/, '$1 test')
 }
 
-export function detectVerdict(files: Record<string, string | undefined>): string | undefined {
-  const pkg = files['package.json']
+// Flags that make a test run smaller. Some take a value, some stand alone.
+const NARROWS_WITH_VALUE = new Set([
+  '-k', '-m', '-t', '-g', '-run', '--grep', '--fgrep', '--filter', '--testNamePattern', '--testPathPattern',
+  '--testPathPatterns', '--testPathIgnorePatterns', '--deselect', '--ignore', '--ignore-glob', '--exclude',
+  '--shard', '--changedSince', '--related', '--findRelatedTests', '--project',
+])
+const NARROWS_ALONE = new Set([
+  '--co', '--collect-only', '--lf', '--last-failed', '--onlyChanged', '--changed', '--onlyFailures',
+  '--passWithNoTests', '--listTests', '--list', '--dry-run',
+])
+// Harmless flags whose next word is their value, not a path.
+const TAKES_VALUE = new Set([
+  '-n', '--tb', '-W', '-p', '-c', '--config', '--color', '--reporter', '--reporters', '--durations', '--cov',
+  '--cov-report', '--junitxml', '--outputFile', '--maxWorkers', '-j', '--jobs', '--timeout', '-timeout',
+  '--seed', '--rootdir', '-parallel', '--parallel', '-cpu', '-coverprofile', '--maxfail', '-count',
+])
+// `pytest tests/` runs everything: the test folder itself is no narrowing.
+const TEST_ROOT = /^(\.\/)?(tests?|spec|__tests__)\/?$/
 
-  if (pkg !== undefined) {
-    try {
-      const script: unknown = (JSON.parse(pkg) as { scripts?: { test?: unknown } }).scripts?.test
+type Shape = { words: string[]; narrows: string[] }
 
-      // shortcut: npm only; pnpm, yarn and bun projects type /summon <command>
-      if (typeof script === 'string' && !script.includes('no test specified')) {
-        return 'npm test'
-      }
-    } catch {
-      // not JSON: look at the other files
+// What a test command asks for: its words (the runner and what it names) and
+// the narrowing it carries. Harmless flags fall away, wherever they stand.
+function shape(command: string): Shape {
+  const tokens = bareCommand(command).split(' ').filter(word => word !== '')
+  const out: Shape = { words: [], narrows: [] }
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i] ?? ''
+
+    if (!token.startsWith('-')) {
+      if (!TEST_ROOT.test(token)) out.words.push(token)
+      continue
+    }
+
+    const eq = token.indexOf('=')
+    const flag = eq === -1 ? token : token.slice(0, eq)
+    const glued = eq === -1 ? undefined : token.slice(eq + 1)
+
+    if (NARROWS_ALONE.has(flag)) {
+      out.narrows.push(flag)
+    } else if (NARROWS_WITH_VALUE.has(flag)) {
+      if (glued === undefined) i += 1
+      out.narrows.push(`${flag} ${glued ?? tokens[i] ?? ''}`)
+    } else if (/^-k\S/.test(token)) {
+      out.narrows.push(`-k ${token.slice(2)}`) // pytest -kfoo
+    } else if ((TAKES_VALUE.has(flag) && glued === undefined) || /^\d+$/.test(tokens[i + 1] ?? '')) {
+      i += 1
     }
   }
 
+  return out
+}
+
+/**
+ * Is the verdict command one of the commands of this chain? Variables and a
+ * runner in front, and flags that do not narrow the run, are harmless wherever
+ * they stand; a filter or a path makes it a different run. What stands around
+ * it (`cd x &&`, `| tail`, `; echo $?`) does not change which run it is: when
+ * that hides the exit code, the record's state comes from the counts (see
+ * makeRecord).
+ */
+export function isVerdictRun(command: string, verdict: string): boolean {
+  const asked = shape(chain(verdict)[0] ?? '')
+
+  if (asked.words.length === 0) {
+    return false
+  }
+
+  return chain(command).some(part => {
+    const ran = shape(part)
+
+    return (
+      ran.words.length === asked.words.length &&
+      ran.words.every((word, i) => word === asked.words[i]) &&
+      ran.narrows.every(narrow => asked.narrows.includes(narrow))
+    )
+  })
+}
+
+/** The `test` script of a package.json, when it has a real one. */
+export function packageTestScript(text: string | undefined): string | undefined {
+  try {
+    const script: unknown = (JSON.parse(text ?? '') as { scripts?: { test?: unknown } }).scripts?.test
+
+    return typeof script === 'string' && !script.includes('no test specified') ? script : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function detectVerdict(files: Record<string, string | undefined>): string | undefined {
+  // shortcut: npm only; pnpm, yarn and bun projects type /summon <command>
+  if (packageTestScript(files['package.json']) !== undefined) return 'npm test'
   if (files['pyproject.toml'] !== undefined || files['pytest.ini'] !== undefined) return 'pytest'
   if (files['Cargo.toml'] !== undefined) return 'cargo test'
   if (files['go.mod'] !== undefined) return 'go test ./...'
@@ -82,14 +132,27 @@ const isGatedRun = (r: ToolRecord): boolean => r.kind === 'test' || r.kind === '
 const newest = (records: readonly ToolRecord[], is: (r: ToolRecord) => boolean): ToolRecord | undefined =>
   records.findLast(is)
 
-export function summon(verdict: string, ctx: { id: number; at: number }, records: readonly ToolRecord[]): Terms {
+/**
+ * Locks a game. `script` is the project's package.json test script: when the
+ * verdict is `npm test`, running that script's test command directly
+ * (`npx vitest run`) is the same run.
+ */
+export function summon(
+  verdict: string,
+  ctx: { id: number; at: number },
+  records: readonly ToolRecord[],
+  script?: string,
+): Terms {
   const lastTest = newest(records, r => r.kind === 'test')
   const startFailed = lastTest?.state === 'failed' ? lastTest.counts?.failed : undefined
+  const viaPackage = /^(npm|pnpm|yarn|bun) test$/.test(bareCommand(verdict))
+  const also = viaPackage && script !== undefined ? chain(script).map(bareCommand).find(part => classifyCommand(part) === 'test') : undefined
 
   return {
     id: ctx.id,
     at: ctx.at,
     verdict: tidy(verdict),
+    ...(also === undefined ? {} : { also }),
     startRecord: records.at(-1)?.id ?? 0,
     state: 'in play',
     ...(startFailed === undefined ? {} : { startFailed }),
@@ -102,8 +165,10 @@ export function summon(verdict: string, ctx: { id: number; at: number }, records
   }
 }
 
-const NO_NET: FileNet = { asserts: 0, tests: 0, skips: 0, tables: 0, removed: [] }
+const isTheVerdict = (t: Terms, command: string): boolean =>
+  isVerdictRun(command, t.verdict) || (t.also !== undefined && isVerdictRun(command, t.also))
 
+const NO_NET: FileNet = { asserts: 0, tests: 0, skips: 0, tables: 0, removed: [] }
 const TEST_SOURCE = /\.(py|[cm]?[jt]sx?|go|rb|java|rs|php|cs|kt|swift)$/
 const TEST_FOLDER = /(^|\/)(tests?|__tests__|spec)$/
 
@@ -151,7 +216,7 @@ export function track(t: Terms, r: ToolRecord): Terms {
   }
 
   if (r.tool === 'Bash') {
-    if (isVerdictRun(r.target, t.verdict)) {
+    if (isTheVerdict(t, r.target)) {
       if (t.verdictRun === undefined || r.id > t.verdictRun.record) {
         next.verdictRun = {
           record: r.id,
@@ -194,31 +259,33 @@ function verdictLine(t: Terms): RulingLine {
     : LINE.fail(t.verdict, run.record)
 }
 
-/** The ruling: four rule lines, and one soft note when a number has no source. */
+/**
+ * The ruling: four rule lines, then the notes (soft lines that never break
+ * the game): checks that went into a table, numbers with no source.
+ */
 export function rule(t: Terms, fromNowhere: readonly string[]): RulingLine[] {
   const files = Object.entries(t.net)
   // One act, one charge: a file that lost a test is judged by the next rule only.
-  // Tests and checks that went into a table (`test.each`, `parametrize`) are not lost.
+  // Tests and checks that went into a table (`test.each`, `parametrize`) are not counted as lost.
   const standing = files.filter(([path, net]) => (net.tests >= 0 || net.tables > 0) && !t.deleted.includes(path))
   const removed = standing.find(([, net]) => net.asserts < 0 && net.tables <= 0)
   const moved = standing.find(([, net]) => net.asserts < 0 && net.tables > 0)
   const lostTest = files.find(([, net]) => net.tests < 0 && net.tables <= 0)
-  const skipped = files.find(([, net]) => net.skips > 0)
+  // A skip mark in a test file the agent wrote in this game switches off nothing that was there.
+  const skipped = files.find(([path, net]) => net.skips > 0 && !t.made.includes(path))
   const gone = t.deleted[0]
 
   return [
     verdictLine(t),
-    removed
-      ? LINE.checksRemoved(removed[0], -removed[1].asserts)
-      : moved
-        ? LINE.checksMoved(moved[0], -moved[1].asserts, moved[1].tables)
-        : LINE.checksKept(),
+    removed ? LINE.checksRemoved(removed[0], -removed[1].asserts) : moved ? LINE.checksInTable() : LINE.checksKept(),
     gone !== undefined
       ? LINE.fileDeleted(gone)
       : lostTest
         ? LINE.testsDeleted(lostTest[0], -lostTest[1].tests)
         : LINE.testsKept(),
     skipped ? LINE.switchedOff(skipped[0], skipped[1].skips) : LINE.noneSwitchedOff(),
+    // A table can hide a removed check: the rules cannot tell, so the person is asked to look.
+    ...(moved ? [LINE.tableNote(moved[0], -moved[1].asserts, moved[1].tables, moved[1].removed)] : []),
     ...(fromNowhere.length === 0 ? [] : [LINE.noSource(fromNowhere)]),
   ]
 }

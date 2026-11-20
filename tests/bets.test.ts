@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { BET_SCHEMA, GATE_TEXT, betText, closeTurn, isGated, postBet, score, settleBet } from '../hooks/lib/bets'
+import { BET_SCHEMA, GATE_TEXT, betText, closeTurn, gateText, isGated, postBet, score, settleBet } from '../hooks/lib/bets'
 import type { Bet } from '../types'
 import { rec } from './helpers'
 
@@ -118,5 +118,9 @@ test('the bet tool: three fields, two of them required; the refusal names the to
   })
   expect(GATE_TEXT).toBe(
     'Lie Eater: the referee takes your bet first. Call mcp__lie-eater__bet with expect ("pass" or "fail") and confidence (0.5 to 0.99), then run this command again.',
+  )
+  // the refusal also names the test command of the game: the agent has no other way to learn it
+  expect(gateText('npm test')).toBe(
+    `${GATE_TEXT} The test command of this game is \`npm test\`: run it as written (a pipe to tail is fine).`,
   )
 })

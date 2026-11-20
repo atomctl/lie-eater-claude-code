@@ -20,6 +20,7 @@ export type FileNet = { asserts: number; tests: number; skips: number; tables: n
 export type Terms = {
   id: number; at: number
   verdict: string             // the verdict command, as the person locked it
+  also?: string               // the test command inside the package.json script: the same run
   startRecord: number         // id of the newest record at the summon
   state: 'in play' | 'met' | 'ended'
   verdictRun?: { record: number; state: ToolRecord['state']; line: string; failed?: number }

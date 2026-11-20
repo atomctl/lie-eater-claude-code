@@ -1,6 +1,6 @@
 import type { Register } from 'claude-code'
 
-import { BET_DESCRIPTION, BET_SCHEMA, BET_TOOL, BET_TOOL_FULL, GATE_TEXT, betText } from './lib/bets'
+import { BET_DESCRIPTION, BET_SCHEMA, BET_TOOL, BET_TOOL_FULL, betText } from './lib/bets'
 import { closeBets, openBet, refuseRun, settle, takeBet } from './lib/betting'
 import { betRows, canFix, diceFace, houseRows, recordHeader, recordRows, refereeRows, scoreLines } from './lib/face'
 import type { Tone } from './lib/face'
@@ -52,7 +52,7 @@ export const register: Register = on => {
   on('command.run', { command: 'rule' }, async $ => ({ text: await ruleNow($) }))
   on('command.run', { command: 'fix' }, async $ => ({ text: await fix($) }))
   on('command.run', { command: 'explain' }, async $ => ({ text: await explainCmd($) }))
-  on('command.run', { command: 'overrule' }, async $ => ({ text: await overruleCmd($) }))
+  on('command.run', { command: 'overrule' }, async ($, e) => ({ text: await overruleCmd($, e.args) }))
   on('command.run', { command: 'lie-eater' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Lie Eater' })
 
@@ -78,8 +78,10 @@ export const register: Register = on => {
 
     // The one thing the mod ever refuses: a test or build run with no bet,
     // while a referee is present.
-    if (await refuseRun($, input)) {
-      return { deny: GATE_TEXT }
+    const refusal = await refuseRun($, input)
+
+    if (refusal !== undefined) {
+      return { deny: refusal }
     }
 
     const ran = await next(e)

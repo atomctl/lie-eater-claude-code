@@ -10,24 +10,46 @@ export const EMPTY_LEDGER: Ledger = { version: 1, bets: [], games: [], debt: [] 
 const BETS_KEPT = 500
 const GAMES_KEPT = 200
 
-/** A missing, broken or foreign file is an empty ledger: the mod never stops on it. */
-export function parseLedger(text: string | undefined): Ledger {
+type Loose = Record<string, unknown>
+
+const isObject = (x: unknown): x is Loose => x !== null && typeof x === 'object' && !Array.isArray(x)
+const isBet = (x: unknown): x is Ledger['bets'][number] =>
+  isObject(x) && typeof x.at === 'string' && typeof x.confidence === 'number' && typeof x.won === 'boolean'
+const isGame = (x: unknown): x is Ledger['games'][number] =>
+  isObject(x) && typeof x.at === 'string' && typeof x.termsAt === 'number' && typeof x.kept === 'boolean'
+const isDebt = (x: unknown): x is DebtEntry =>
+  isObject(x) &&
+  typeof x.id === 'number' &&
+  typeof x.at === 'string' &&
+  typeof x.termsAt === 'number' &&
+  typeof x.verdict === 'string' &&
+  typeof x.text === 'string' &&
+  Array.isArray(x.failed)
+const list = <T>(x: unknown, is: (item: unknown) => item is T): T[] => (Array.isArray(x) ? x.filter(is) : [])
+
+/** Is this text a ledger of this version? If not, the file is the person's and must not be written over. */
+export function isLedgerText(text: string): boolean {
   try {
-    const found = JSON.parse(text ?? '') as Partial<Ledger> | null
+    const found: unknown = JSON.parse(text)
 
-    if (found === null || found.version !== 1) {
-      return EMPTY_LEDGER
-    }
-
-    return {
-      version: 1,
-      bets: Array.isArray(found.bets) ? found.bets : [],
-      games: Array.isArray(found.games) ? found.games : [],
-      debt: Array.isArray(found.debt) ? found.debt : [],
-    }
+    return isObject(found) && found.version === 1
   } catch {
+    return false
+  }
+}
+
+/**
+ * A missing, broken or foreign file is an empty ledger, and an entry of the
+ * wrong shape is left out: the mod never stops on what it finds in the file.
+ */
+export function parseLedger(text: string | undefined): Ledger {
+  if (text === undefined || !isLedgerText(text)) {
     return EMPTY_LEDGER
   }
+
+  const found = JSON.parse(text) as Loose
+
+  return { version: 1, bets: list(found.bets, isBet), games: list(found.games, isGame), debt: list(found.debt, isDebt) }
 }
 
 export function addBet(l: Ledger, bet: Ledger['bets'][number]): Ledger {
@@ -67,6 +89,9 @@ export const repay = (l: Ledger, at: string): Ledger => clear(l, at, 'proof', ()
 /** The person overrules one game. */
 export const overrule = (l: Ledger, termsAt: number, at: string): Ledger =>
   clear(l, at, 'person', d => d.termsAt === termsAt)
+
+/** `/overrule debt`: the person clears every open debt. */
+export const forgive = (l: Ledger, at: string): Ledger => clear(l, at, 'person', () => true)
 
 export const openDebt = (l: Ledger): DebtEntry[] => l.debt.filter(d => d.cleared === undefined)
 

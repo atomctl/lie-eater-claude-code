@@ -54,6 +54,16 @@ test('rulingText: a final ruling with broken rules, a note and a debt', async ()
   ])
 })
 
+test('rulingText shows every note in its own block', async () => {
+  const lines = rule(BROKEN, ['0.86'])
+  const table = { term: 'asserts' as const, pass: false, soft: true as const, plain: 'Checks were moved into a table', detail: 'tests/a.test.ts: assertions -9, tables +1', why: 'A table can hide a removed check. Look at the removed lines.' }
+  const text = rulingText([...lines.slice(0, 4), table, ...lines.slice(4)], { final: false })
+
+  expect(text.filter(l => l.startsWith('? '))).toEqual(['? Checks were moved into a table', '? 1 number has no source'])
+  expect(text.filter(l => l.includes('Worth a look:'))).toHaveLength(2)
+  expect(text[0]).toBe('RULING so far: 2 of 4 rules kept')
+})
+
 test('rulingText: "so far" has no verdict; all kept has no note block', async () => {
   const soFar = rulingText(rule(BROKEN, []), { final: false })
   expect(soFar[0]).toBe('RULING so far: 2 of 4 rules kept')

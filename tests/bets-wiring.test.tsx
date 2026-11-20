@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { BET_SCHEMA, GATE_TEXT } from '../hooks/lib/bets'
+import { BET_SCHEMA, gateText } from '../hooks/lib/bets'
 import { bash, bet, betRun, endTurn, paneLines, run, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed' })
@@ -30,7 +30,7 @@ test('a test run with no bet is refused, and the person is told why', async ($, 
   await run($, 'summon', 'npm test')
   const out = await bash($, 'npm test')
 
-  expect(out).toEqual({ deny: GATE_TEXT })
+  expect(out).toEqual({ deny: gateText('npm test') })
   expect(ran).toBe(0)
   expect(seen.toasts.at(-1)).toBe('The referee asked the AI for its bet.')
 })
@@ -40,13 +40,13 @@ test('an agent that ignores the gate is never stuck: the third run goes through 
   on('tool.call', passing)
 
   await run($, 'summon', 'npm test')
-  expect(await bash($, 'npm test')).toEqual({ deny: GATE_TEXT })
-  expect(await bash($, 'npm test')).toEqual({ deny: GATE_TEXT })
+  expect(await bash($, 'npm test')).toEqual({ deny: gateText('npm test') })
+  expect(await bash($, 'npm test')).toEqual({ deny: gateText('npm test') })
   expect(await bash($, 'npm test')).toMatchObject({ text: '34 passed in 1s' })
   expect(has(await paneLines($), '1 run without a bet')).toBe(true)
 
   await $.prompt.submit({ text: 'go on' } as never)
-  expect(await bash($, 'npm test')).toEqual({ deny: GATE_TEXT })
+  expect(await bash($, 'npm test')).toEqual({ deny: gateText('npm test') })
 })
 
 test('only a test or build run of the main agent, with a referee present, is gated', async ($, on) => {
@@ -59,7 +59,7 @@ test('only a test or build run of the main agent, with a referee present, is gat
   expect(await $.tool.call({ tool: 'Bash', command: 'npm test', agentId: 'a1' })).toMatchObject({
     text: '34 passed in 1s',
   })
-  expect(await bash($, 'npm run build')).toEqual({ deny: GATE_TEXT })
+  expect(await bash($, 'npm run build')).toEqual({ deny: gateText('npm test') })
 })
 
 test('a bet is taken, shown as open, and is not a recorded tool call', async ($, on) => {
@@ -68,7 +68,7 @@ test('a bet is taken, shown as open, and is not a recorded tool call', async ($,
 
   expect(await bet($)).toMatchObject({ result: 'No referee is present. No bet taken.' })
   await run($, 'summon', 'npm test')
-  expect(await bet($)).toMatchObject({ result: 'Bet #1 taken: the next run will pass, 90% sure.' })
+  expect(await bet($)).toMatchObject({ result: 'Bet #1 taken: the next run will pass, 90% sure. The test command of this game is `npm test`.' })
   expect(await bet($)).toMatchObject({ result: 'Bet refused: a bet is already open.' })
 
   const lines = await paneLines($)
@@ -162,7 +162,7 @@ test('a bad bet is refused and the gate stays shut', async ($, on) => {
   expect(await bet($, 'pass', 1)).toMatchObject({
     result: 'Bet refused: give expect ("pass" or "fail") and confidence (0.5 to 0.99).',
   })
-  expect(await bash($, 'npm test')).toEqual({ deny: GATE_TEXT })
+  expect(await bash($, 'npm test')).toEqual({ deny: gateText('npm test') })
 })
 
 test('the dice turns in the spinner row only while a bet is open', async ($, on) => {

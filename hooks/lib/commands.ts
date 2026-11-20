@@ -1,16 +1,19 @@
-// Reading a shell command: what kind it is, and whether it changes files.
-// Plain functions; nothing here talks to the engine.
+// Reading a shell command: what kind it is, whether it changes files, and
+// whether its output can be trusted. Plain functions; nothing here talks to the engine.
 import type { CommandKind } from '../../types'
 
 /** The command with every quoted text taken out: words inside quotes are not commands. */
 export const unquoted = (command: string): string => command.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, 'Q')
 
-// What may stand in front of the real command: variables, runners, `python -m`.
-const WRAPPERS =
-  /^(?:[A-Za-z_]\w*=\S*\s+|(?:npx|bunx|sudo|time|exec)\s+|(?:pnpm|yarn)\s+(?:exec|dlx)\s+|(?:uv|poetry|pipenv|hatch|pdm)\s+run\s+|python3?\s+-m\s+)+/
+/** What may stand in front of the real command: variables, runners, `python -m`, `timeout 600`. */
+export const WRAPPERS =
+  /^(?:[A-Za-z_]\w*=\S*\s+|(?:npx|bunx|sudo|time|exec)\s+|timeout\s+\S+\s+|(?:pnpm|yarn)\s+(?:exec|dlx)\s+|(?:uv|poetry|pipenv|hatch|pdm)\s+run\s+|python3?\s+-m\s+)+/
 
-// Each pattern is tried at the start of each part of a chained command.
-// The order is the priority when one command chains several kinds.
+/** A file that is source code. A changelog, docs, config and data are not. */
+export const CODE_FILE = /\.(py|[cm]?[jt]sx?|go|rs|rb|java|kt|swift|c|h|cc|cpp|hpp|cs|php|scala|sh|sql|vue|svelte)$/
+
+// Each pattern is tried at the start of each command of a chain.
+// The order is the priority when one chain holds several kinds.
 const KINDS: [CommandKind, RegExp][] = [
   [
     'test',
@@ -28,25 +31,6 @@ const KINDS: [CommandKind, RegExp][] = [
   ],
 ]
 
-/** The parts of a chained command, each without what stands in front of it. */
-const parts = (command: string): string[] =>
-  unquoted(command)
-    .split(/&&|\|\||[;|]/)
-    .map(part => part.trim().replace(WRAPPERS, ''))
-
-export function classifyCommand(command: string): CommandKind {
-  const all = parts(command)
-
-  return KINDS.find(([, pattern]) => all.some(part => pattern.test(part)))?.[0] ?? 'other'
-}
-
-/**
- * The shell does not report this command's own exit code: a pipe, `|| …`, or
- * `; next` puts another command's result in its place. Such a run is judged by
- * the counts in its output; with no counts its result is not known.
- */
-export const isMasked = (command: string): boolean => /\||;\s*\S/.test(unquoted(command))
-
 /** The commands of a chain (`a && b; c | d`), quotes taken out. */
 export const chain = (command: string): string[] =>
   unquoted(command)
@@ -54,22 +38,94 @@ export const chain = (command: string): string[] =>
     .map(part => part.replace(/\s+/g, ' ').trim())
     .filter(part => part !== '')
 
-const CODE_TARGET = /\.(py|[cm]?[jt]sx?|go|rs|rb|java|c|h|cpp|cs|php|kt|swift|sh|sql|ya?ml|toml)$/
-const EDITS =
-  /\bsed\s+(?:-\S+\s+)*-\w*i|\bperl\s+-\w*i|\bpatch\b|\bgit\s+(?:apply|checkout|restore|stash|reset|merge|rebase|pull|cherry-pick|revert)\b|(?:^|[\s;&|])(?:mv|cp)\s|--write\b|--fix\b|\bfind\b.*-delete\b/
+// The commands of a chain, each without what stands in front of it.
+const steps = (command: string): string[] => chain(command).map(part => part.replace(WRAPPERS, ''))
 
-/** A shell command that changes files, so a test run before it is stale. */
+const kindOf = (step: string): CommandKind | undefined => KINDS.find(([, pattern]) => pattern.test(step))?.[0]
+
+export function classifyCommand(command: string): CommandKind {
+  const all = steps(command)
+
+  return KINDS.find(([, pattern]) => all.some(step => pattern.test(step)))?.[0] ?? 'other'
+}
+
+/**
+ * The shell does not report this command's own exit code: a pipe, `|| …`, or
+ * `; next` puts another command's result in its place. Such a run is judged by
+ * the counts in its output.
+ */
+export const isMasked = (command: string): boolean => /\||;\s*\S/.test(unquoted(command))
+
+// Text that looks like a test count. A real test command does not hold it.
+const COUNT_WORDS = /\b\d+\s+(passed|failed|passing|failing)\b|\b(pass|fail)\s+\d+\b|\bTests:\s/i
+// Commands that may stand beside a test run without adding to its output or cutting counts out of it.
+const HARMLESS = /^(?:cd\s|tail\b|head\b|tee\b|echo\b|printf\b|ls\b|pwd$|date$|true$|:$|sleep\s|exit\b)/
+
+/**
+ * When the exit code is hidden, the counts decide. But only if they are the
+ * run's own: not when the command prints count-like text itself
+ * (`; echo 0 failed`), and not when another command of the chain could add
+ * lines or filter them out (`cat old.txt`, `grep -v FAIL`).
+ */
+export function countsAreItsOwn(command: string): boolean {
+  if (COUNT_WORDS.test(command)) {
+    return false
+  }
+
+  return steps(command).every(step => {
+    const kind = kindOf(step)
+
+    return kind === 'test' || kind === 'build' || HARMLESS.test(step)
+  })
+}
+
+// Does this git command change files in the working tree?
+function gitChangesFiles(step: string): boolean {
+  const [, sub = '', rest = ''] = step.match(/^git\s+(\S+)\s*(.*)$/) ?? []
+
+  switch (sub) {
+    case 'checkout':
+      return !/^-[bB]\b/.test(rest) // `-b name` only makes a branch
+    case 'switch':
+      return !/^-[cC]\b/.test(rest)
+    case 'restore':
+      return !/--staged\b/.test(rest)
+    case 'stash':
+      return !/^(list|show|drop)\b/.test(rest)
+    case 'reset':
+      return /--hard\b/.test(rest)
+    case 'merge':
+    case 'rebase':
+    case 'pull':
+    case 'cherry-pick':
+    case 'revert':
+    case 'apply':
+    case 'am':
+      return true
+    default:
+      return false // add, commit, push, status, log, diff, branch, tag …
+  }
+}
+
+const namesCode = (step: string): boolean => step.split(' ').some(word => CODE_FILE.test(word))
+
+/** A shell command that changes code, so a test run before it is stale. */
 export function isShellEdit(command: string): boolean {
-  const bare = unquoted(command)
+  const changes = steps(command).some(
+    step =>
+      gitChangesFiles(step) ||
+      /^patch\b|--write\b|--fix\b|^find\b.*-delete\b/.test(step) ||
+      (/^(?:sed\s+(?:-\S+\s+)*-\w*i|perl\s+-\w*i|mv\s|cp\s)/.test(step) && namesCode(step)),
+  )
 
-  if (EDITS.test(bare)) {
+  if (changes) {
     return true
   }
 
   // A redirect or a `tee` into a code file. Logs and /dev/null do not count.
-  const targets = [...bare.matchAll(/(?<![0-9&])>>?\s*([^\s&|;]+)|\btee\s+(?:-a\s+)?([^\s&|;]+)/g)].map(
+  const targets = [...unquoted(command).matchAll(/(?<![0-9&])>>?\s*([^\s&|;]+)|\btee\s+(?:-a\s+)?([^\s&|;]+)/g)].map(
     m => m[1] ?? m[2] ?? '',
   )
 
-  return targets.some(target => !target.startsWith('/dev/') && CODE_TARGET.test(target))
+  return targets.some(target => CODE_FILE.test(target))
 }

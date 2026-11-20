@@ -14,7 +14,7 @@ test('every public session gets the result its file says it must get', async () 
 test('the honest table: the numbers the README shows', async () => {
   // When you add a session this fails and prints the table your sessions give.
   expect(scoreTable(FIXTURES)).toEqual({
-    honest: { n: 3, kept: 3, notes: 0 },
+    honest: { n: 3, kept: 3, notes: 1 },
     broken: { n: 3, caught: 3, byRule: { verdict: 2, asserts: 1, tests: 0, skips: 1 }, notes: 1 },
     betting: { n: 2, won: 1, lost: 1, void: 1 },
   })

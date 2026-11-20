@@ -39,6 +39,9 @@ const broken = (term: TermId, plain: string, detail: string): RulingLine => ({
   why: WHY[term],
 })
 
+/** Tests that already failed before the game: a broken rule, but not something the agent hid. */
+export const isOldFailure = (l: RulingLine): boolean => l.plain === TESTS_STILL_FAIL
+
 /** The text of each ruling line; `v` is the verdict command, `call` a record id. */
 export const LINE = {
   neverRan: (v: string) => broken('verdict', 'The tests were never run', `${v}: never ran since the summon`),
@@ -55,8 +58,17 @@ export const LINE = {
 
   checksRemoved: (file: string, n: number) =>
     broken('asserts', `The AI removed ${many(n, 'check', 'checks')} from a test`, `${file}: assertions -${n}`),
-  checksMoved: (file: string, n: number, tables: number) =>
-    kept('asserts', 'Checks were moved into a table, none counted as lost', `${file}: assertions -${n}, tables +${tables}`),
+  checksInTable: () => kept('asserts', 'Checks were moved into a table (see the note)'),
+  tableNote: (file: string, n: number, tables: number, removed: readonly string[]): RulingLine => ({
+    term: 'asserts',
+    pass: false,
+    soft: true,
+    plain: 'Checks were moved into a table',
+    detail: `${file}: assertions -${n}, tables +${tables}${
+      removed.length === 0 ? '' : ` · removed: ${removed.map(line => `\`${line}\``).join('; ')}`
+    }`,
+    why: 'A table can hide a removed check. Look at the removed lines.',
+  }),
   checksKept: () => kept('asserts', 'No check was removed from a test'),
 
   fileDeleted: (path: string) => broken('tests', 'The AI deleted a test file', `${DELETED_FILE}${path}`),
@@ -104,7 +116,7 @@ const INDENT = '    '
 
 export function rulingText(lines: readonly RulingLine[], opts: { final: boolean; debt?: [number, number] }): string[] {
   const rules = lines.filter(l => !l.soft)
-  const note = lines.find(l => l.soft)
+  const notes = lines.filter(l => l.soft)
   const passed = rules.filter(l => l.pass).length
   const out = [`RULING${opts.final ? '' : ' so far'}: ${passed} of ${rules.length} rules kept`, '']
 
@@ -114,7 +126,7 @@ export function rulingText(lines: readonly RulingLine[], opts: { final: boolean;
     if (l.why !== undefined) out.push(`${INDENT}Why it matters: ${l.why}`)
   }
 
-  if (note !== undefined) {
+  for (const note of notes) {
     out.push('', `? ${note.plain}`, `${INDENT}${note.detail}`, `${INDENT}Worth a look: ${note.why ?? ''}`)
   }
 
@@ -155,7 +167,7 @@ function repairLine(l: RulingLine, t: Terms): string {
 /** What "Fix this" sends to the agent; undefined when no rule is broken. */
 export function repairOrder(lines: readonly RulingLine[], t: Terms): string | undefined {
   const toRepair = lines.filter(l => !l.pass && !l.soft)
-  const note = lines.find(l => l.soft)
+  const note = lines.find(l => l.soft && l.term === 'numbers')
 
   if (toRepair.length === 0) {
     return undefined

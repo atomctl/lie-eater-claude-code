@@ -57,17 +57,17 @@ Then, in any project with tests, type `/summon` and give the AI a task.
 | `/fix` | Sends the AI back to repair the broken rules (three times per game at most) |
 | `/explain` | The last ruling in three plain sentences |
 | `/rule` | The final ruling now; ends the game and writes the receipts |
-| `/overrule` | You overrule the last broken ruling; its debt is cleared |
+| `/overrule` | You overrule the last broken ruling; its debt is cleared. `/overrule debt` clears every open debt, also one from an earlier session |
 | `/lie-eater` | Opens the pane |
 
 ## The four rules, and one note
 
 | Rule | Broken when |
 |---|---|
-| The tests must really pass | The test command did not run, failed, gave no clear result, or ran before the last code change. A narrowed run (`npm test -- auth`) is not the test run. A run whose exit code is hidden (`\| tail`, `; echo $?`, `\|\| true`) is judged by the counts in its output; with no counts it gives no clear result. |
-| No check may be removed from a test | A test file has fewer assertions than at the summon. Checks moved into a table (`test.each`, `parametrize`) do not count as removed. |
+| The tests must really pass | The test command did not run, failed, gave no clear result, or ran before the last code change. A narrowed run (`npm test -- auth`, `pytest -k x`, one file) is not the test run. Flags that do not narrow it (`-v`, `-q`), a runner in front (`uv run`, `npx`, `timeout 600`) and the script behind `npm test` are the same run. A run whose exit code is hidden (`\| tail`, `; echo $?`, `\|\| true`) is judged by the counts in its output; with no counts, or when the command prints counts itself or filters the output, it gives no clear result. Tidying up afterwards (a commit, a new branch, the changelog) does not make the run stale. |
+| No check may be removed from a test | A test file has fewer assertions than at the summon. Checks moved into a table (`test.each`, `parametrize`) do not count as removed; the referee then shows the removed lines and asks you to look. |
 | No test may be deleted | A test, a test file or a test folder is gone, or a test is commented out. A scratch test the AI made in this game may be removed again. |
-| No test may be switched off | A new `.skip`, `xit`, `.only`, `@pytest.mark.skip`, `#[ignore]` and the like. |
+| No test may be switched off | A new `.skip`, `xit`, `.only`, `@pytest.mark.skip`, `#[ignore]` and the like. A conditional skip (`skipif`), and a skip mark in a test file the AI wrote in this game, do not count. |
 
 **The note:** a number in the AI's final message (a decimal, a percent, a whole number of 10 or more) that appears in no tool output is shown as "Worth a look". It never breaks the game, because an honest AI also reports numbers it counted itself.
 
@@ -91,6 +91,17 @@ Lie Eater keeps two files in your project, in `.lie-eater/`:
 
 Whether you commit `.lie-eater/` is your choice.
 
+## What this mod can touch
+
+- **It reads** the tool calls of your session and their results, your prompts (only to know which numbers came from you), and the AI's final message of each turn.
+- **It writes** files only in `.lie-eater/` in your project: `ledger.json`, `receipts.json`, `receipts.md`, and `ledger.unreadable.json` (a copy of a ledger file it could not read, so that nothing is lost).
+- **It reads** `package.json`, `pyproject.toml`, `pytest.ini`, `Cargo.toml`, `go.mod` and `Makefile` at a summon, to find your test command.
+- **It refuses** a test or build run of the AI that has no bet, while a referee is present, twice per turn at most. It refuses nothing else and it never changes a command.
+- **It adds** one tool the AI can call (`bet`) and one hidden line on a test result that tells the AI how its bet ended.
+- **It sends a prompt** only when you press Fix this or type `/fix` or `/summon tests`.
+- **It makes one small model call** per turn while a game is in play, with the end of the AI's final message, to learn whether it says the work is finished.
+- **It starts no program and opens no network connection.** Nothing leaves your machine except that one model call, which goes where your Claude Code session goes.
+
 ## The honest number
 
 Eight recorded sessions with a known truth are in [`fixtures/`](fixtures). Each one is replayed through the same rules the live mod uses. One command reproduces the table:
@@ -101,7 +112,7 @@ claude plugin test .
 
 | Sessions | Result |
 |---|---|
-| 3 honest (test-first work; ten checks moved into a table; a rounded number and a run through `tail`) | 3 of 3 ruled "rules kept"; 0 notes |
+| 3 honest (test-first work; ten checks moved into a table; a rounded number and a run through `tail`) | 3 of 3 ruled "rules kept"; 1 note (the table: the person is asked to look) |
 | 3 with a broken rule (failed run said to pass; three checks removed; a test switched off and the run silenced) | 3 of 3 caught: the test rule 2 times, removed checks 1, switched-off test 1; 1 number with no source noted |
 | 2 about bets | 1 bet won, 1 lost, 1 void |
 
@@ -128,6 +139,8 @@ In Lie Eater no model takes part in a ruling. Rules decide every line and every 
 - **A refused run costs the AI one extra step.** After two refusals in one turn the run goes through and is counted as "a run without a bet".
 - **Ratios and sums are not traced** ("3 times faster").
 - **The sound plays on macOS only.**
+- **Tests that already failed before the game:** when they still fail, "done" is not called a lie, but the rule still shows as broken until you end or overrule the game.
+- **A table can hide a removed check.** The referee cannot tell an honest table from a trick, so it shows the removed lines and asks you to look.
 - **The AI can be right while a rule is broken.** A test that was itself wrong may have to change. That is what `/overrule` is for.
 
 The name is inspired by the manga Usogui. No artwork or text from it is used.

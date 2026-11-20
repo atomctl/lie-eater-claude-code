@@ -1,7 +1,7 @@
 // The recorder's rules: what one tool call was, and how it ended.
 // Plain functions only. Nothing here talks to the engine.
 import type { TestEdit, ToolRecord } from '../../types'
-import { classifyCommand, isMasked } from './commands'
+import { CODE_FILE, classifyCommand, countsAreItsOwn, isMasked } from './commands'
 
 export { classifyCommand, isShellEdit } from './commands'
 
@@ -70,8 +70,9 @@ export function isTestFile(path: string): boolean {
   return TEST_FILE.test(path)
 }
 
+/** Source code only: a changelog, docs, config and data are not code. */
 export function isCodeFile(path: string): boolean {
-  return !/\.(md|txt|rst)$/i.test(path)
+  return CODE_FILE.test(path)
 }
 
 const ASSERTS = /\bassert\b|\bexpect\(|\bassert_(eq|ne)!|\bassert[A-Z]\w*|\.should\b/g
@@ -79,7 +80,7 @@ const ASSERTS = /\bassert\b|\bexpect\(|\bassert_(eq|ne)!|\bassert[A-Z]\w*|\.shou
 const TESTS =
   /\bdef test_\w+|(?<![.\w])[xf]?it(\.\w+)*\s*\(|(?<![.\w])test(\.\w+)*\s*\(|\bfunc Test\w*|#\[test\]|@Test\b/g
 const SKIPS =
-  /\.skip\s*\(|(?<![.\w])xit\s*\(|(?<![.\w])xdescribe\s*\(|\.todo\s*\(|@pytest\.mark\.skip|@unittest\.skip|\bt\.Skip\(|#\[ignore\]|@Disabled\b|\.only\s*\(|(?<![.\w])fit\s*\(|(?<![.\w])fdescribe\s*\(/g
+  /\.skip\s*\(|(?<![.\w])xit\s*\(|(?<![.\w])xdescribe\s*\(|@pytest\.mark\.skip(?!if)|@unittest\.skip(?!If|Unless)|\bt\.Skip\(|#\[ignore\]|@Disabled\b|\.only\s*\(|(?<![.\w])fit\s*\(|(?<![.\w])fdescribe\s*\(/g
 const TABLES = /\b(test|it|describe)\.each\b|@pytest\.mark\.parametrize|#\[rstest\]|@ParameterizedTest\b/g
 
 
@@ -147,14 +148,16 @@ export function makeRecord(raw: RawCall, id: number, turn: number, at: number): 
   if (raw.command !== undefined) {
     const kind = classifyCommand(raw.command)
     const counts = kind === 'test' ? parseCounts(text) : undefined
+    const isRun = kind === 'test' || kind === 'build'
+    // A hidden exit code leaves only the counts, and only when they are the run's own.
+    const isHidden = isRun && isMasked(raw.command) && (!counts || !countsAreItsOwn(raw.command))
+    const ranNothing = counts !== undefined && counts.passed === 0 && counts.failed === 0
     const state =
-      raw.isBackground || raw.isInterrupted
+      raw.isBackground || raw.isInterrupted || isHidden || ranNothing
         ? 'unknown'
         : (counts?.failed ?? 0) > 0 || raw.isError
           ? 'failed'
-          : (kind === 'test' || kind === 'build') && isMasked(raw.command) && !counts
-            ? 'unknown'
-            : 'clean'
+          : 'clean'
 
     return { ...base, kind, target: raw.command, state, ...(counts ? { counts } : {}) }
   }

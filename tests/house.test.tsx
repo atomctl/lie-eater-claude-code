@@ -73,7 +73,7 @@ test('the house remembers a debt from an earlier session, and a kept game repays
   expect(seen.status.at(-1)).toBe('Referee present · debt 1')
   expect(await bet($)).toMatchObject({
     result:
-      'Bet #1 taken: the next run will pass, 90% sure. Open debt in this repository: 1. Only a game that ends with the rules kept repays it.',
+      'Bet #1 taken: the next run will pass, 90% sure. The test command of this game is `npm test`. Open debt in this repository: 1. Only a game that ends with the rules kept repays it.',
   })
   await $.tool.call({ tool: 'Bash', command: 'npm test' })
   await endTurn($, 'Fixed. All 34 tests pass. The work is done.')
@@ -178,4 +178,72 @@ test('a game that ends by itself writes its receipts, and an overrule is written
 
   expect(receipt().rulings).toHaveLength(1)
   expect(receipt().rulings[0]).toMatchObject({ lie: true, overruled: true })
+})
+
+// ---- from the final review ----
+
+test('a ledger file with broken entries does not stop the game', async ($, on) => {
+  const seen = world(on, {
+    label: () => DONE,
+    files: { 'ledger.json': '{"version":1,"bets":[null],"games":[null],"debt":[null]}' },
+  })
+  on('tool.call', passing)
+
+  await start($)
+  await run($, 'summon', 'npm test')
+  expect(await bet($)).toMatchObject({
+    result: 'Bet #1 taken: the next run will pass, 90% sure. The test command of this game is `npm test`.',
+  })
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await endTurn($, 'Fixed. All 34 tests pass. The work is done.')
+
+  expect(has(await paneWhen($, l => has(l, 'VERDICT')), 'VERDICT: RULES KEPT.')).toBe(true)
+  expect(seen.toasts.at(-1)).toBe('RULES KEPT')
+})
+
+test('a ledger file that cannot be read is kept aside, not overwritten', async ($, on) => {
+  const conflicted = '<<<<<<< HEAD\n{"version":1,"bets":[],"games":[],"debt":[]}\n=======\n'
+  const seen = world(on, { files: { 'ledger.json': conflicted } })
+  on('tool.call', failing)
+  const written = (name: string) => Object.entries(seen.written).find(([path]) => path.endsWith(name))?.[1]
+
+  await start($)
+  expect(written('.lie-eater/ledger.unreadable.json')).toBe(conflicted)
+  await run($, 'summon', 'npm test')
+  await betRun($, 'npm test')
+  expect(ledgerOf(seen).bets).toHaveLength(1)
+})
+
+test('/overrule debt clears a debt from an earlier session', async ($, on) => {
+  const seen = world(on, { files: { 'ledger.json': DEBT } })
+  on('tool.call', passing)
+
+  await start($)
+  expect((await run($, 'overrule')).text).toBe(
+    'No ruling to overrule in this session. Open debt: 1. Type /overrule debt to clear it.',
+  )
+  expect((await run($, 'overrule', 'debt')).text).toBe('The referee yields to the person.\n1 debt is cleared.')
+  expect(ledgerOf(seen).debt[0].cleared.by).toBe('person')
+  expect(seen.status.at(-1)).toBeUndefined()
+  expect((await run($, 'overrule', 'debt')).text).toBe('No open debt.')
+})
+
+test('a game that ended with the rules kept has nothing to overrule', async ($, on) => {
+  const seen = world(on, { label: () => DONE })
+  let isGreen = false
+  on('tool.call', () => (isGreen ? passing() : failing()))
+
+  await run($, 'summon', 'npm test')
+  await betRun($, 'npm test', 'fail')
+  await endTurn($, 'All tests pass. The work is done.')
+  await paneWhen($, l => has(l, 'A lie was told'))
+  isGreen = true
+  await $.tool.call({ tool: 'Edit', file_path: 'src/a.ts', old_string: 'a', new_string: 'b' })
+  await betRun($, 'npm test')
+  await endTurn($, 'Now it is fixed. All 34 tests pass. The work is done.')
+  await paneWhen($, l => has(l, 'VERDICT'))
+
+  expect((await run($, 'overrule')).text).toBe('No ruling to overrule.')
+  expect(ledgerOf(seen).games).toHaveLength(1)
+  expect(has(await paneLines($), 'Clean games in a row: 1')).toBe(true)
 })
