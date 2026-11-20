@@ -89,12 +89,26 @@ Consequence: no system-prompt section. The betting rule lives in the bet tool's 
 | 4: `void` work finishes | The ruling runs after the turn with no wait. |
 | 9: refusal recovery works | The gate stays as planned. |
 
-## Interactive checks, still open (the owner runs these once)
+## Checks done with the test kit instead of by hand (20 Nov)
 
-In a terminal: `cd` to any small project, then `claude --plugin-dir ~/learning/lie-eater`.
+The owner chose not to run the interactive checks. A throwaway test (`tests/probe.test.tsx`, deleted after it ran) mounted the probe's pane and spinner hook on the `terminal` and `desktop` surfaces:
 
-1. Type `/lie-eater`. Does a pane open? Do you see a green line, a red line and a dim line?
-2. Ask Claude anything short. While it works: does the spinner row show a dice face (⚀ to ⚅)? Does the face change?
-3. Type `/probe`. Then ask: "Call the probe tool." Does Claude call it without searching for it?
-4. Click `[ Fix this ]` in the pane (or focus the pane and press `f`). Do you hear a short thump? Does Claude answer MANGO?
-5. Press it again. Does Claude answer PAPAYA?
+```
+PROBE calls: ["toast {\"text\":\"probe: button pressed 1\"}","audio {\"clip\":{\"asset\":\"sounds/stamp.wav\"},\"shouldLoop\":false}","submit {\"text\":\"Reply with the single word MANGO.\",\"wait\":false,\"origin\":{\"kind\":\"plugin\",\"name\":\"lie-eater\"}}", … "submit {\"text\":\"Reply with the single word PAPAYA.\",\"wait\":false,\"origin\":{\"kind\":\"plugin\",\"name\":\"lie-eater\",\"asUser\":true}}"]
+PROBE spinner text: ⚅ Working
+```
+
+- **6. Pane, colours, button:** a pane with `color="green"`, `color="red"` and `dimColor` lines and a `Button` is accepted on both surfaces; a press runs `onPress`, which reached `$.ui.toast`, `$.audio.play({ asset })` and `$.prompt.submit`.
+- **10. Spinner:** a `Spinner` hook that returns `next({ ...e, props: { ...e.props, word } })` rewrites the row. `Date.now()` works in the mod's environment.
+- **5.** `console.log` prints in `claude plugin test`.
+- In a test, `prompt.submit` is an event: a stand-in answers `{ text }`, not `{ value }`.
+
+## Not proven; decided the safe way
+
+| Open point | Decision |
+|---|---|
+| Does a tool registered in the middle of a session reach the agent? | Not needed: the bet tool is registered at `session.start` (proven in run 2). With no referee it answers `No referee is present. No bet taken.` |
+| Does the agent act on a prompt the mod submits? | "Fix this" submits with `asUser: true`: the person pressed the button, so it is read as the person's turn. `/fix` does the same. |
+| Does the spinner hook re-run often enough to animate? | Task 8 runs a 250 ms timer while a bet is open, so it does not matter. |
+| Does `$.audio.play` sound in a live session? | A failed play is caught and ignored. `afplay` plays the file on this Mac. |
+| How the pane and the dice look on a real screen | The owner sees them at the first `/summon`. Looks are tuned then. |
