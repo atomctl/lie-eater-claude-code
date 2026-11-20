@@ -32,7 +32,17 @@ export async function projectFiles($: EngineInterface): Promise<Record<string, s
 
 // Folders that hold no tests of the project. A folder whose name starts with a dot is left out too
 // (`.git`, `.lie-eater`, `.venv`).
-const NOT_THE_PROJECT = new Set(['node_modules', 'venv', 'env', 'dist', 'build', 'target', 'vendor', '__pycache__'])
+const NOT_THE_PROJECT = new Set(['node_modules', 'venv', 'env', 'dist', 'build', 'target', 'vendor', '__pycache__', 'coverage', 'htmlcov'])
+
+// The plain names the project's own `.gitignore` lists (`coverage/`, `/out`): what git ignores is
+// output, not the project. A test run that writes there must not make its own result stale.
+const ignoredNames = (text: string): Set<string> =>
+  new Set(
+    text
+      .split('\n')
+      .map(line => line.trim().replace(/^\//, '').replace(/\/$/, ''))
+      .filter(name => /^[\w.@-]+$/.test(name)),
+  )
 // A project with more folders or files than this, or a folder that cannot be listed, is not read
 // to its end: no fingerprint, and no result better than "not checked".
 const FOLDERS_WALKED = 400
@@ -52,6 +62,7 @@ export async function walk($: EngineInterface, from = ''): Promise<Walked> {
   const names: string[] = []
   const stamps: string[] = []
   const folders = [from]
+  const ignored = ignoredNames(await $.fs.read(root === '' ? '.gitignore' : `${root}/.gitignore`).catch(() => ''))
   let isWhole = true
   let i = 0
 
@@ -66,6 +77,9 @@ export async function walk($: EngineInterface, from = ''): Promise<Walked> {
 
     for (const entry of entries) {
       const name = folder === '' ? entry.name : `${folder}/${entry.name}`
+
+      // Never a check file: a frozen file stays in the project whatever git ignores.
+      if (ignored.has(entry.name) && !isFrozen(name)) continue
 
       if (entry.kind !== 'dir') {
         names.push(name)

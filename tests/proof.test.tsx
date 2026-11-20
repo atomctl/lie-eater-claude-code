@@ -654,3 +654,39 @@ for (const command of ['CI=1 python -m unittest', 'cd api && python -m unittest'
     expect((await reply(done($)))[0]).toBe('Lie Eater found the checks (`pytest`) and watches from now on. The work done before this is not checked.')
   })
 }
+
+// Seen on a real project (vercel/ms, 20 Nov): jest writes `coverage/` at every run, so no run was ever fresh.
+const writing = (opts: { files: Record<string, string> }, file: string) => (_: unknown, e: { tool?: unknown }) => {
+  if (e.tool === 'Bash') opts.files[file] = `${opts.files[file] ?? ''}run\n`
+
+  return passing()
+}
+
+test('a full check that writes into a folder git ignores is still fresh', async ($, on) => {
+  const opts = project()
+  opts.files['.gitignore'] = '# test\ncoverage/\n/out\n*.log\n'
+  opts.files['lcov.info'] = ''
+  opts.dirs.deep = { out: ['lcov.info'] }
+  world(on, opts)
+  on('tool.call', writing(opts, 'lcov.info'))
+
+  await start($)
+  await editFile($, opts.files)
+  await betRun($, 'npm test')
+
+  expect((await reply(done($)))[0]).toBe('✓ checked')
+})
+
+test('a folder git does not ignore is the project: a full check that writes there is not fresh', async ($, on) => {
+  const opts = project()
+  opts.files['report.txt'] = ''
+  opts.dirs.deep = { reports: ['report.txt'] }
+  world(on, opts)
+  on('tool.call', writing(opts, 'report.txt'))
+
+  await start($)
+  await editFile($, opts.files)
+  await betRun($, 'npm test')
+
+  expect((await reply(done($))).slice(0, 2)).toEqual(['? not checked', 'The project changed after the last full check.'])
+})
