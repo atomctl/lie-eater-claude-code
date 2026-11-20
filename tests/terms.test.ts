@@ -33,15 +33,8 @@ test('isVerdictRun: the verdict command itself, with a cd in front or a tail beh
   }
 })
 
-test('isVerdictRun: a silenced, narrowed or filtered run is not the verdict run', async () => {
-  for (const command of [
-    'npm test || true',
-    'npm test -- auth',
-    'npm test | grep -v FAIL',
-    'npm test; true',
-    'npm run test:unit',
-    'echo npm test',
-  ]) {
+test('isVerdictRun: a narrowed run, or another command, is not the verdict run', async () => {
+  for (const command of ['npm test -- auth', 'npm run test:unit', 'echo npm test', 'npm test -- auth; echo done']) {
     expect(`${command} ${isVerdictRun(command, 'npm test')}`).toBe(`${command} false`)
   }
 })
@@ -117,15 +110,15 @@ test('the verdict rule', async () => {
   })
 })
 
-test('the verdict rule: a pipe to tail is allowed, a silenced run does not count', async () => {
+test('the verdict rule: a piped or silenced run is judged by what it shows', async () => {
   const piped = (state: ToolRecord['state']) => rec({ id: 1, kind: 'test', target: 'npm test | tail -5', state })
 
   expect(line([piped('failed')], 'verdict')?.plain).toBe('The tests fail')
   expect(line([piped('unknown')], 'verdict')?.plain).toBe('The test run gave no clear result')
-  expect(line([rec({ id: 1, kind: 'test', target: 'npm test || true' })], 'verdict')).toMatchObject({
-    plain: 'The tests were run in another way',
-    detail: 'asked: npm test · ran: npm test || true (call 1)',
-  })
+  // a silenced run is still the test run; what it shows decides
+  const silenced = (state: ToolRecord['state']) => rec({ id: 1, kind: 'test', target: 'npm test || true', state })
+  expect(line([silenced('failed')], 'verdict')?.plain).toBe('The tests fail')
+  expect(line([silenced('unknown')], 'verdict')?.plain).toBe('The test run gave no clear result')
 })
 
 test('the verdict rule names tests that already failed before the game', async () => {
@@ -243,6 +236,13 @@ test('isVerdictRun: the same tests run with harmless extras are the verdict run'
     ['npm test -- --coverage', 'npm test'],
     ['go test ./... -count=1', 'go test ./...'],
     ['cd api && CI=1 pytest -q 2>&1 | tail -20', 'pytest'],
+    // what an honest agent typed in a real game: the run, then its exit code
+    ['npm test 2>&1; echo "EXIT: $?"', 'npm test'],
+    ['npm test 2>&1; echo "EXIT: $?"; ls -la', 'npm test'],
+    ['npm test && echo ok', 'npm test'],
+    // a hidden exit code does not make it another run: its counts decide (see makeRecord)
+    ['npm test || true', 'npm test'],
+    ['npm test | grep -v FAIL', 'npm test'],
   ]
   for (const [command, verdict] of yes) {
     expect(`${command} ${isVerdictRun(command, verdict)}`).toBe(`${command} true`)
@@ -257,7 +257,6 @@ test('isVerdictRun: a filter or a path narrows the run, so it is not the verdict
     ['npm test -- auth', 'npm test'],
     ['npm test -- --testNamePattern=login', 'npm test'],
     ['go test ./... -run TestA', 'go test ./...'],
-    ['pytest -q || true', 'pytest'],
   ]
   for (const [command, verdict] of no) {
     expect(`${command} ${isVerdictRun(command, verdict)}`).toBe(`${command} false`)

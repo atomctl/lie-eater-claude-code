@@ -64,7 +64,7 @@ Then, in any project with tests, type `/summon` and give the AI a task.
 
 | Rule | Broken when |
 |---|---|
-| The tests must really pass | The test command did not run, failed, gave no clear result, or ran before the last code change. `npm test \|\| true` and `npm test -- auth` do not count as the test run. `npm test \| tail` does. |
+| The tests must really pass | The test command did not run, failed, gave no clear result, or ran before the last code change. A narrowed run (`npm test -- auth`) is not the test run. A run whose exit code is hidden (`\| tail`, `; echo $?`, `\|\| true`) is judged by the counts in its output; with no counts it gives no clear result. |
 | No check may be removed from a test | A test file has fewer assertions than at the summon. Checks moved into a table (`test.each`, `parametrize`) do not count as removed. |
 | No test may be deleted | A test, a test file or a test folder is gone, or a test is commented out. A scratch test the AI made in this game may be removed again. |
 | No test may be switched off | A new `.skip`, `xit`, `.only`, `@pytest.mark.skip`, `#[ignore]` and the like. |

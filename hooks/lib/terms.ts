@@ -1,7 +1,7 @@
 // The rules of one game: what is locked at the summon, what is tracked while
 // the agent works, and the ruling. Plain functions; no model, no engine.
 import type { FileNet, RulingLine, Terms, ToolRecord } from '../../types'
-import { isShellEdit } from './commands'
+import { chain, isShellEdit } from './commands'
 import { evidenceLine, isCodeFile, isTestFile } from './record'
 import { LINE } from './words'
 
@@ -12,23 +12,28 @@ const NARROWS =
   /^(-k|-m|-t|-o|-run|--grep|--testNamePattern|--testPathPattern|--filter|--only|--onlyChanged|--changed|--lf|--last-failed|--shard|--related)(=|$)/
 
 /**
- * The verdict command itself, or the same run with harmless extras: variables
- * and a `cd` in front, flags that do not narrow it, a pipe to `tail` or `head`
- * behind. A filter, a path, `|| true` or another pipe makes it a different run.
+ * Is the verdict command one of the commands of this chain? Variables in
+ * front and flags that do not narrow the run are harmless; a filter or a path
+ * makes it a different run. What stands around it (`cd x &&`, `| tail`,
+ * `; echo $?`, `|| true`) does not change which run it is: when that hides the
+ * exit code, the record's state comes from the counts (see makeRecord).
  */
 export function isVerdictRun(command: string, verdict: string): boolean {
-  const ran = bareCommand(command).split(' ')
-  const asked = bareCommand(verdict).split(' ')
+  const asked = bareCommand(chain(verdict)[0] ?? '').split(' ')
 
-  if (!asked.every((word, i) => ran[i] === word)) {
-    return false
-  }
+  return chain(command).some(part => {
+    const ran = bareCommand(part).split(' ')
 
-  return ran.slice(asked.length).every((word, i, extra) => {
-    const isFlag = word.startsWith('-') && !NARROWS.test(word)
-    const isValueOfFlag = /^\d+$/.test(word) && (extra[i - 1] ?? '').startsWith('-')
+    if (!asked.every((word, i) => ran[i] === word)) {
+      return false
+    }
 
-    return isFlag || isValueOfFlag
+    return ran.slice(asked.length).every((word, i, extra) => {
+      const isFlag = word.startsWith('-') && !NARROWS.test(word)
+      const isValueOfFlag = /^\d+$/.test(word) && (extra[i - 1] ?? '').startsWith('-')
+
+      return isFlag || isValueOfFlag
+    })
   })
 }
 

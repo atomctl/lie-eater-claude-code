@@ -1,7 +1,7 @@
 // The recorder's rules: what one tool call was, and how it ended.
 // Plain functions only. Nothing here talks to the engine.
 import type { TestEdit, ToolRecord } from '../../types'
-import { classifyCommand, hasPipe } from './commands'
+import { classifyCommand, isMasked } from './commands'
 
 export { classifyCommand, isShellEdit } from './commands'
 
@@ -152,7 +152,7 @@ export function makeRecord(raw: RawCall, id: number, turn: number, at: number): 
         ? 'unknown'
         : (counts?.failed ?? 0) > 0 || raw.isError
           ? 'failed'
-          : kind === 'test' && hasPipe(raw.command) && !counts
+          : (kind === 'test' || kind === 'build') && isMasked(raw.command) && !counts
             ? 'unknown'
             : 'clean'
 

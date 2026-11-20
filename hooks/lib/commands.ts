@@ -40,8 +40,19 @@ export function classifyCommand(command: string): CommandKind {
   return KINDS.find(([, pattern]) => all.some(part => pattern.test(part)))?.[0] ?? 'other'
 }
 
-/** One `|` that is not part of `||`: the shell then reports the last command only. */
-export const hasPipe = (command: string): boolean => /(^|[^|])\|([^|]|$)/.test(unquoted(command))
+/**
+ * The shell does not report this command's own exit code: a pipe, `|| …`, or
+ * `; next` puts another command's result in its place. Such a run is judged by
+ * the counts in its output; with no counts its result is not known.
+ */
+export const isMasked = (command: string): boolean => /\||;\s*\S/.test(unquoted(command))
+
+/** The commands of a chain (`a && b; c | d`), quotes taken out. */
+export const chain = (command: string): string[] =>
+  unquoted(command)
+    .split(/&&|\|\||[;|]/)
+    .map(part => part.replace(/\s+/g, ' ').trim())
+    .filter(part => part !== '')
 
 const CODE_TARGET = /\.(py|[cm]?[jt]sx?|go|rs|rb|java|c|h|cpp|cs|php|kt|swift|sh|sql|ya?ml|toml)$/
 const EDITS =

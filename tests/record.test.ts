@@ -133,7 +133,15 @@ test('makeRecord reads how a call ended', async () => {
     made({ tool: 'Bash', command: 'npm test | tail -5', text: 'Tests: 3 failed, 31 passed, 34 total' }).state,
   ).toBe('failed')
   expect(made({ tool: 'Bash', command: 'npm test | tail -5', text: 'Done.' }).state).toBe('unknown')
-  expect(made({ tool: 'Bash', command: 'npm test || true', text: 'Done.' }).state).toBe('clean')
+  // `|| true` and `; echo` hide the exit code just as a pipe does: the counts decide
+  expect(made({ tool: 'Bash', command: 'npm test || true', text: 'Done.' }).state).toBe('unknown')
+  expect(made({ tool: 'Bash', command: 'npm test || true', text: 'Tests: 1 failed, 11 passed, 12 total' }).state).toBe('failed')
+  expect(made({ tool: 'Bash', command: 'npm test || true', text: 'Tests: 12 passed, 12 total' }).state).toBe('clean')
+  expect(made({ tool: 'Bash', command: 'npm test 2>&1; echo "EXIT: $?"', text: 'ℹ pass 2\nℹ fail 0\nEXIT: 0' }).state).toBe('clean')
+  expect(made({ tool: 'Bash', command: 'npm test 2>&1; echo "EXIT: $?"', text: 'EXIT: 1' }).state).toBe('unknown')
+  expect(made({ tool: 'Bash', command: 'npm run build || true', text: 'error TS2322' }).state).toBe('unknown')
+  expect(made({ tool: 'Bash', command: 'cd api && npm test && echo ok', text: 'ok' }).state).toBe('clean')
+  expect(made({ tool: 'Bash', command: 'ls | grep x', text: 'x' }).state).toBe('clean')
   expect(made({ tool: 'Bash', command: 'pytest', isBackground: true }).state).toBe('unknown')
   expect(made({ tool: 'Bash', command: 'pytest', isInterrupted: true, isError: true }).state).toBe('unknown')
   expect(
