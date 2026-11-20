@@ -1,32 +1,42 @@
-// Munch, the face of the result in the pane: pixel art of block characters,
-// two pixels to a character (the top half and the bottom half). Plain code
-// decides the result (result.ts `munchOf` picks the face); Munch only shows it.
+// Munch, the face of the result in the pane: a white fox in pixel art of block
+// characters, two pixels to a character (the top half and the bottom half).
+// Plain code decides the result (result.ts `munchOf` picks the face); Munch only shows it.
 import type { Face } from './result'
 
-/** A warm orange body, dark eyes and mouth, white teeth: readable on a dark and a light terminal. */
-export const COLOURS = { O: '#E8812F', D: '#2B1B12', W: '#FFFFFF' } as const
+/** A white fox with a dark outline, so it holds on a dark and a light terminal. */
+export const COLOURS = {
+  o: '#3A2F45', // outline
+  f: '#F3EDDF', // fur
+  r: '#C34458', // inner ears, cheeks
+  m: '#1E1722', // eyes, nose, mouth
+  e: '#F2C14E', // wide-open eyes
+  g: '#D9485A', // tongue
+} as const
 
 /**
- * Six pixel rows (three text rows), eleven wide: one round body, and only the
- * eyes and the mouth change. `O` body, `D` dark, `W` white, `.` nothing.
+ * Ten pixel rows (five text rows), sixteen wide: the owner's fox. Only the
+ * eyes and the mouth change; the alarmed mouth stays closed. `.` is nothing.
  */
 export const PIXELS: Record<Face, readonly string[]> = {
-  watching: ['...OOOOO...', '.OODOOODOO.', 'OOOOOOOOOOO', 'OODDDDDDDOO', '.OOOWOWOOO.', '..OOOOOOO..'],
-  pleased: ['...OOOOO...', '.OODOOODOO.', 'OODODODODOO', 'ODOOOOOOODO', '.ODDDDDDDO.', '..OOOOOOO..'],
-  alarmed: ['...OOOOO...', '.OODDODDOO.', 'OOOOOOOOOOO', 'ODWDWDWDWDO', '.ODWDWDWDO.', '..OOOOOOO..'],
-  hungry: ['...OOOOO...', '.OODOOODOO.', 'OOOOOOOOOOO', 'OOOODWDOOOO', '.OOODDDOOO.', '..OOOOOOO..'],
+  watching: ['.oo..........oo.', 'ofro........orfo', 'offfoooooooofffo', 'offffffffffffffo', 'ofmmffffffffmmfo', 'offfmmffffmmfffo', '.orffffmmffffro.', '..offfffmmmffo..', '....offffffo....', '......oooo......'],
+  pleased: ['.oo..........oo.', 'ofro........orfo', 'offfoooooooofffo', 'offffffffffffffo', 'offmmffffffmmffo', 'ofmffmffffmffmfo', '.orffffmmffffro.', '..offmffffmffo..', '....ofmmmmfo....', '......oooo......'],
+  alarmed: ['.oo..........oo.', 'ofro........orfo', 'offfoooooooofffo', 'offffffffffffffo', 'ofeeeffffffeeefo', 'ofemeffffffemefo', '.orffffmmffffro.', '..offfmmmmfffo..', '....offffffo....', '......oooo......'],
+  hungry: ['.oo..........oo.', 'ofro........orfo', 'offfoooooooofffo', 'offffffffffffffo', 'offffffffffffffo', 'offmmffffffmmffo', '.orffffmmffffro.', '..offffmmffffo..', '....offggffo....', '......oooo......'],
 }
 
-/** The plain art, for a pane too narrow for the pixel art. */
+/** The plain fox, for a pane too narrow for the pixel art: the eyes and the mouth tell the mood. */
 export const PLAIN: Record<Face, readonly string[]> = {
-  watching: [' .----.', '( o  o )', '(  --  )', " `----'"],
-  pleased: [' .----.', '( ^  ^ )', '( \\__/ )', " `----'"],
-  alarmed: [' .----.', '( O  O )', '( \\/\\/ )', " `----'"],
-  hungry: [' .----.', '( o  o )', '(  ()  )', " `----'"],
+  watching: ['/\\_____/\\', '( -   - )', ' \\  .  /', '  \\___/'],
+  pleased: ['/\\_____/\\', '( ^   ^ )', ' \\  w  /', '  \\___/'],
+  alarmed: ['/\\_____/\\', '( O   O )', ' \\  -  /', '  \\___/'],
+  hungry: ['/\\_____/\\', '( o   o )', ' \\  O  /', '  \\___/'],
 }
 
-/** Below this many columns the pane draws the plain art: the pixel face and its gap take 12, the result lines keep 28. */
-export const PIXEL_COLUMNS = 40
+/** The width of the face's box, with one column of gap: the pixel fox, and the plain one. */
+export const FACE_WIDTH = { pixel: 17, plain: 10 } as const
+
+/** Below this many columns the pane draws the plain fox: the pixel face and its gap take 17, the result lines keep 28. */
+export const PIXEL_COLUMNS = 45
 
 export type Span = { text: string; color?: string; backgroundColor?: string }
 
@@ -44,19 +54,21 @@ function cell(top: string | undefined, bottom: string | undefined): Span {
   return { text: '▀', color: t, backgroundColor: b }
 }
 
-/** The face as three text rows, each a list of spans; neighbours of one style are one span. */
+/** The face as five text rows, each a list of spans; neighbours of one style are one span. */
 export function faceRows(face: Face): Span[][] {
   const px = PIXELS[face]
 
-  return [0, 2, 4].map(r =>
-    [...(px[r] ?? '')]
-      .map((top, c) => cell(top, px[r + 1]?.[c]))
-      .reduce<Span[]>((spans, s) => {
-        const last = spans.at(-1)
+  return px
+    .filter((_, r) => r % 2 === 0)
+    .map((_, i) =>
+      [...(px[2 * i] ?? '')]
+        .map((top, c) => cell(top, px[2 * i + 1]?.[c]))
+        .reduce<Span[]>((spans, s) => {
+          const last = spans.at(-1)
 
-        return last !== undefined && last.color === s.color && last.backgroundColor === s.backgroundColor
-          ? [...spans.slice(0, -1), { ...last, text: last.text + s.text }]
-          : [...spans, s]
-      }, []),
-  )
+          return last !== undefined && last.color === s.color && last.backgroundColor === s.backgroundColor
+            ? [...spans.slice(0, -1), { ...last, text: last.text + s.text }]
+            : [...spans, s]
+        }, []),
+    )
 }

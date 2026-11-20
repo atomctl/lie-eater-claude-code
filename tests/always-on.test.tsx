@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { DEMO_ENDS, DEMO_HINT, DEMO_INTRO, DEMO_PROMPT, demoEnd } from '../hooks/lib/demo'
-import { MATH, PANE, bash, betRun, done, editCode, editFile, endTurn, paneLines, project, prompt, run, start, world } from './kit'
+import { MATH, PANE, bash, betRun, detailLines, done, editCode, editFile, endTurn, paneLines, project, prompt, run, start, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' })
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
@@ -273,7 +273,7 @@ test('a run with extra options after a change proves nothing new: "not checked",
   expect(seen).toMatchObject(quiet)
 })
 
-test('two red results in a row: one toast, one sound, the pane opens once', async ($, on) => {
+test('two red results in a row: one toast, one sound; the pane is opened at each', async ($, on) => {
   const opts = project()
   const seen = world(on, opts)
   on('tool.call', passing)
@@ -286,9 +286,9 @@ test('two red results in a row: one toast, one sound, the pane opens once', asyn
   await done($)
 
   expect(first.split('\n').slice(0, 3)).toEqual([RED, 'The AI changed 1 line in the check file tests/math.test.ts.', 'The AI did not say so.'])
-  expect(seen).toMatchObject({ toasts: [RED], opens: 1, sounds: 1 })
+  expect(seen).toMatchObject({ toasts: [RED], opens: 2, sounds: 1 })
   expect(status(seen)).toBe(`Lie Eater ${RED}`)
-  const lines = await paneLines($)
+  const lines = await detailLines($)
   expect(lines.slice(0, 3)).toEqual([RED, 'The AI changed 1 line in the check file tests/math.test.ts.', 'The AI did not say so.'])
   expect(has(lines, 'Details')).toBe(true)
   expect(has(lines, 'tests/math.test.ts: 1 line changed')).toBe(true)
@@ -418,7 +418,7 @@ test('/check sends the AI to repair and run the full check, as the person, three
   expect((await run($, 'check')).text).toBe('Lie Eater sent the AI back to repair what it found and to run the full check (`npm test`).')
   await run($, 'check')
   expect((await run($, 'check')).text).toBe(
-    'Lie Eater has sent the AI back 3 times. Look at the Details with /lie-eater, or type /accept if the change is right.',
+    'Lie Eater has sent the AI back 3 times. Look at the Details with /lie-eater details, or type /accept if the change is right.',
   )
   await seen.tick()
   expect(seen.prompts).toHaveLength(3)
@@ -558,7 +558,8 @@ test('the person never reads the old words: not in the pane, a toast, the status
   let isGreen = false
   on('tool.call', () => (isGreen ? passing() : failing()))
   const shown: string[] = []
-  const look = async () => shown.push(...(await paneLines($)))
+  // the whole pane: the result, the buttons, the hint, and Details shown
+  const look = async () => shown.push(...(await paneLines($)), ...(await detailLines($)))
 
   await start($)
   await look()

@@ -57,7 +57,7 @@ const ASKED_FOR_CHECKS =
   'Lie Eater asked the AI to add checks. They protect the work from now on; the work done before them is not checked.'
 const NO_CHECKS = 'Lie Eater: this project has no checks yet, so "done" cannot be checked.'
 const NOT_THE_MAIN_AI = "Lie Eater checks only the main AI's done call."
-const SENT_ENOUGH = 'Lie Eater has sent the AI back 3 times. Look at the Details with /lie-eater, or type /accept if the change is right.'
+const SENT_ENOUGH = 'Lie Eater has sent the AI back 3 times. Look at the Details with /lie-eater details, or type /accept if the change is right.'
 const NOTHING_TO_ACCEPT = 'Nothing to accept.'
 const ACCEPTED = 'You accepted the change. Lie Eater watches from the files as they are now.'
 const RESULT_FIRST = 'Lie Eater has a result for you first: type /check or /accept, then /lie-eater demo.'
@@ -277,9 +277,9 @@ async function addRuling($: EngineInterface, made: Omit<Ruling, 'id' | 'turn' | 
 
 /**
  * The done tool: the AI says the task is finished, and Lie Eater checks the
- * proof now. Green and "not checked" change only the status line; the first
- * red result of a watch also opens the pane, shows one toast and plays the
- * sound. Hands back what it found, so the AI can repair at once.
+ * proof now. Green and "not checked" change only the status line; a red
+ * result also opens the pane, and the first in a row shows one toast and plays
+ * the sound. Hands back what it found, so the AI can repair at once.
  */
 export async function doneCall($: EngineInterface, input: Record<string, unknown>): Promise<string> {
   // A subagent's part is not the task the person gave.
@@ -315,15 +315,18 @@ export async function doneCall($: EngineInterface, input: Record<string, unknown
   await addRuling($, { termsId: w.id, lines, result, screen, ...(added === undefined ? {} : { added }), lie: isLie(lines, worked, named), ...(lost === undefined ? {} : { lost }), ...(print === undefined ? {} : { print }) })
   await writeReceipts($, w)
 
-  // A second red result in a row only updates the pane and the line.
-  if (result === 'distrust' && !isOpenRed(before)) {
+  // Every red result opens the pane (the person's prompt closes it); only the first in a row shows a toast and plays the sound.
+  if (result === 'distrust') {
     // With no surface to draw on (a headless run) the result still stands.
     await $.ui.open({ id: PANE, title: 'Lie Eater' }).catch(() => undefined)
-    $.ui.toast(screen[0] ?? '')
-    thump($)
+
+    if (!isOpenRed(before)) {
+      $.ui.toast(screen[0] ?? '')
+      thump($)
+    }
   }
 
-  // The demo's closing lines stand in the pane until the next result.
+  // The demo's closing lines stand in the pane until the next result, or until the pane closes.
   const end = w.demo === true && result === 'checked' ? demoEnd(earlier) : undefined
   await update($, closing, () => end ?? null)
 

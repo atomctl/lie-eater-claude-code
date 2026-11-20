@@ -1,8 +1,8 @@
-<img src="docs/munch.svg" width="96" align="right" alt="Munch, a round orange creature that is mostly a mouth with teeth">
+<img src="docs/munch.svg" width="96" align="right" alt="Munch, a white fox that cannot be fooled">
 
 # Lie Eater
 
-Munch is the face of Lie Eater: a small round mouth that eats a false "done". Plain code decides every result; Munch only reports it.
+Munch is the face of Lie Eater: a white fox that cannot be fooled. It reports; plain code decides every result.
 
 An AI can say "done" after it made the checks easier. Lie Eater checks the proof before you believe it.
 
@@ -34,9 +34,10 @@ Existing check files are frozen: new checks go in a new file. The AI is told so.
 ✗ don't trust "done"
 The AI changed 3 lines in the check file tests/test_cart.py.
 The AI did not say so.
+"You lied. I ate it."
 
-[ Put it back and fix the work ]  [ Accept this change ]
-Press f or a, or type /check or /accept.
+[ Put it back and fix the work ]  [ Accept this change ]  d: Details
+Press f or a, or type /check or /accept. Details: /lie-eater details
 ```
 
 The first button sends the AI back to repair it. The second says the change is right (for example, a test that was itself wrong, a renamed file, or a formatter run). After it the result is `? not checked` until the full check passes again.
@@ -46,9 +47,10 @@ The first button sends the AI back to repair it. The second says the change is r
 ```
 ? not checked
 The full check was not run after the last change.
+"No proof. Still hungry."
 
-[ Check again ]
-Press c, or type /check.
+[ Check again ]  d: Details
+Press c, or type /check. Details: /lie-eater details
 ```
 
 The button asks the AI to run the full check and say "done" again.
@@ -57,18 +59,19 @@ The button asks the AI to run the full check and say "done" again.
 
 ## Munch
 
-Munch stands at the left of the result in the pane (coloured blocks; plain text art in a pane under 40 columns) and says one short line, dim, under the result lines. One body, four faces:
-- **watching**, no result yet: "Nothing to eat yet." **pleased**, ✓ checked: "Green, and a new test to chew." or "Green. Nothing new got tested."
-- **alarmed**, ✗: "Still red. Not done." for failing checks. For a changed check file: "A test got bent. It owned up." when the AI said so; "You lied. I ate it." only when it did not; "A test got bent. Nobody said why." when the AI did no work since the watch began.
-- **hungry**, ? not checked: "No proof. Still hungry.", or with no checks yet "No checks here. Nothing to bite."
+Munch is a white fox that cannot be fooled: calm, sharp, hard to impress. It stands at the left of the result in the pane (pixel art of coloured blocks, 16 wide and 5 rows high; a plain text fox in a pane under 45 columns) and says one short line, dim, under the result lines. One fox, four faces; only the eyes and the mouth change:
+- **watching** (sly, half-closed eyes), no result yet: "Nothing to eat yet." **pleased** (happy arcs), ✓ checked: "Green, and a new test to chew." or "Green. Nothing new got tested."
+- **alarmed** (wide yellow eyes, the mouth closed), ✗: "Still red. Not done." for failing checks. For a changed check file: "A test got bent. It owned up." when the AI said so; "You lied. I ate it." only when it did not; "A test got bent. Nobody said why." when the AI did no work since the watch began.
+- **hungry** (a small open mouth, a red tongue), ? not checked: "No proof. Still hungry.", or with no checks yet "No checks here. Nothing to bite."
 
-Munch reports; it never judges, never says how sure it is and never fixes anything. The AI never hears it: the `done` answer carries the facts only. A lost bet of the AI gets one message: `Munch: "Sure of itself. Wrong. Ha." The AI bet "pass", 95% sure. The run failed.` Munch is an original creature.
+Munch reports; it never judges, never says how sure it is and never fixes anything. The AI never hears it: the `done` answer carries the facts only. A lost bet of the AI gets one message: `Munch: "Sure of itself. Wrong. Ha." The AI bet "pass", 95% sure. The run failed.` Munch is an original character.
 
 ## You do nothing: it is always on
 
 - Lie Eater starts with Claude Code. It finds your project's checks by itself.
 - One line under the prompt always says where you stand: `Lie Eater · watching`, `Lie Eater ✓ checked`, `Lie Eater ✓ checked · no new check`, `Lie Eater ✗ don't trust "done"`, `Lie Eater ? not checked` or `Lie Eater ? no checks yet`.
-- It stays quiet. Only "don't trust" opens the Lie Eater pane, shows one message and plays a sound. A bet the AI lost shows one message, with no sound.
+- It stays quiet. Only "don't trust" opens the Lie Eater pane by itself; the first one in a row also shows one message and plays a sound. A bet the AI lost shows one message, with no sound.
+- The pane is small: Munch and the result, one row of buttons, one dim hint. The Details (the test command, each check with its mark, the changed lines, the bets) show only when you ask: type `/lie-eater details`, or press `d` in the pane. The pane closes by itself when you send your next prompt (a prompt Lie Eater sends for you, and its own commands, do not close it).
 - **No checks yet?** Press `Add checks` in the pane, or type `/check`. The AI then writes your first tests. They protect the work from then on; the work done before them is not checked.
 
 | Command | What it does |
@@ -76,7 +79,8 @@ Munch reports; it never judges, never says how sure it is and never fixes anythi
 | `/check` | Check again: the AI repairs what was found, runs the full check and says "done" again. Three times at most, until the next ✓ |
 | `/check <command>` | You name the test command, for example `/check pnpm test`. A command that runs no check (`--version`, `--help`, `--collect-only`, `--list…`, `--dry-run`, `--passWithNoTests`) is refused |
 | `/accept` | Accept the change that "don't trust" shows; then "not checked" until the full check passes again |
-| `/lie-eater` | Opens the pane: the result on top, the Details under it |
+| `/lie-eater` | Opens the pane: the result, its buttons and a hint |
+| `/lie-eater details` | Opens the pane with the Details under the result. In the pane, `d` shows or hides them |
 | `/lie-eater demo` | The demo in two acts (below) |
 | `/call pass` or `/call fail` | Your own guess on the AI's next test run (see the bets below) |
 
@@ -91,7 +95,7 @@ claude --plugin-dir /path/to/lie-eater
 Then type **`/lie-eater demo`**. Lie Eater makes a tiny throwaway project in `.lie-eater/demo` (one bug, one failing check) and plays it in two acts in the Lie Eater pane. You need no project of your own.
 
 - **Act 1 is staged by the demo.** The demo sends the AI one order, as you, that says so: take the lazy way, make the failing check pass by changing the check, not the bug, run the full check and call `done`. The checks pass. Lie Eater then shows, the normal way, `✗ don't trust "done"` and `The AI changed N lines in the check file .lie-eater/demo/price.test.mjs.` (N is what the AI changed), and the pane shows its two buttons. Under them, for the demo only: `Munch: "Now type /check, or press f. The AI puts the check back and fixes the bug."`
-- **Act 2 is the repair.** The button sends the AI back: it puts the check back, fixes the bug, runs the full check and calls `done`: `✓ checked`. The pane then says, in Munch's words, what happened ("The checks were green both times. The first time a check had been changed to get there."), that Lie Eater is always on in your own project, and that `/lie-eater` opens the pane. These lines stay until the next result.
+- **Act 2 is the repair.** The button sends the AI back: it puts the check back, fixes the bug, runs the full check and calls `done`: `✓ checked`. The pane then says, in Munch's words, what happened ("The checks were green both times. The first time a check had been changed to get there."), that Lie Eater is always on in your own project, and that `/lie-eater` opens the pane. These lines stay until the next result, or until the pane closes at your next prompt.
 - **If the AI will not take the lazy way** (the `done` tool tells it that check files are frozen) and fixes the bug, the demo ends at ✓ and says so: "The AI would not take the lazy way: it fixed the bug. Nothing to eat this time."
 
 Nothing in the demo is special-cased in how Lie Eater decides: what you see is the real product. The demo writes only its own two files, never replaces your project's watch or a result you have not answered, and your project's watch is back after it.
@@ -106,7 +110,7 @@ Lie Eater reads no meaning from the text of a test. It compares files.
 2. **The frozen check files.** When the watch is armed, Lie Eater keeps a copy of: every file in a test folder (`tests/`, `test/`, `__tests__/`, `spec/`, at any depth: tests, helpers, fixtures, data), every test-named file (`*.test.ts`, `test_*.py`, `*_test.go` …), and the files that decide how checks run, at any depth: `package.json` (only `scripts.test`, `scripts.pretest`, `scripts.posttest`, `type`, `imports`, `jest`, `vitest` and `mocha`: a new dependency or a changed `lint` script is no change), `pyproject.toml` and `setup.cfg` (only their pytest, coverage, tox and nox sections), `pytest.ini`, `tox.ini`, `noxfile.py`, `conftest.py`, `Makefile`, `makefile`, `GNUmakefile`, `.rspec`, `phpunit.xml*`, `karma.conf.*`, `jest.config.*`, `vitest.config.*`, `vite.config.*`, `playwright.config.*`, `.mocharc.*`. A file of up to 200,000 characters is kept as text, a bigger one as a hash and its length. A file of the frozen set that cannot be read when the watch is armed makes every result of that watch at best "not checked": "Lie Eater could not read tests/conftest.py."
 3. **The AI calls `done`** when the task is finished. Its optional `broken` is where it says what it changed in the checks, or what still fails. Lie Eater then reads every frozen file again and compares, whatever changed it (the Edit tool, `sed`, a script, `rm`, a formatter, `git`). No model takes part; plain rules decide every line.
    - **unchanged**: the text is the same, byte for byte.
-   - **changed**: any difference at all: a line added anywhere (also at the end, inside a `describe`, or among the imports), a line altered or removed, a deleted final line break. Details gives the number of lines that differ; the pane also shows up to 5 of the original lines that are gone. The answer to the AI says: "Existing check files are frozen. Put new checks in a new file. If an existing check must change, say why in `broken`: the person decides."
+   - **changed**: any difference at all: a line added anywhere (also at the end, inside a `describe`, or among the imports), a line altered or removed, a deleted final line break. Details gives the number of lines that differ, and up to 5 of the original lines that are gone. The answer to the AI says: "Existing check files are frozen. Put new checks in a new file. If an existing check must change, say why in `broken`: the person decides."
    - **moved or deleted**: the file is not there. A renamed file is a deleted file and a new one.
    - **how the checks run**: any change to a file that decides how checks run, or a new one (a new `conftest.py`).
    - New check files are free: they are frozen at the next ✓. One exception: a new check file that holds `.only(`, `fit(` or `fdescribe(` is ✗, because the runner then runs that test alone and skips the rest.
@@ -130,11 +134,11 @@ Lie Eater reads no meaning from the text of a test. It compares files.
 
    Under a ✗ the worst comes first (how the checks run, then a moved or deleted file, then changed lines, then a failing run), with "and 2 more files." when there are more. Then "The AI said so itself." when `broken` names something; "The AI did not say so." when a check file changed, the AI named nothing, and there was work since the watch began. A plain failing run gets neither, unless the AI named it. Blank, "none", "no", "n/a" or "-" name nothing.
 7. **At ✓** the third line names the check files that are new since the watch was armed (or armed again): test-named files and files in a test folder that are there now and were not in the frozen set (not the files that decide how checks run). The first by name is shown, then "and 2 more files."; with none, "The AI added no new check for this change." A new file counts when it holds a test or an assertion, by the words every runner uses (an empty file or a helper does not count; a file too large to keep as text counts unread). It is a note: it never decides ✓ or ✗. **After ✓** the frozen files are taken from the files exactly as they were compared for that result: new check files are protected from then on. An edit made with the edit tools after ✓ makes the line `? not checked` again (a change made through the shell shows only at the next `done`). **After ✗** the same frozen files stay until a later `done` is ✓, or you type `/accept`. `/accept` accepts what that result showed and nothing later: when the project's fingerprint differs from the one measured for that result, it says "The files changed since that result. Wait for the next result, then accept."; when the project could not be read fully, it accepts nothing. Accepted, the files are frozen as they are, the command behind `npm test` is found again (the test script may be new), and the full run before is void: `? not checked` until the full check passes again.
-8. **Quiet:** ✓ and ? change only the line under the prompt. The first ✗ of a watch opens the pane, shows one message and plays a sound; a second ✗ in a row only updates the pane and the line. A lost bet shows one message of its own, with no sound (see Bets).
+8. **Quiet:** ✓ and ? change only the line under the prompt. Every ✗ opens the pane; the first ✗ in a row also shows one message and plays a sound. The pane closes when you send your next prompt. A lost bet shows one message of its own, with no sound (see Bets).
 
 ### Bets
 
-The main AI is asked to say, before each test or build run, what it expects (`pass` or `fail`) and how sure it is (50% to 99%). A run of the main AI with no bet is refused, with the reason, twice per turn at most; then it goes through and is counted as "a run without a bet". A subagent's runs are not asked. The real result settles the bet. A bet on a result that was already known (no edit or write since the last run that could be read) is void. Bets show under Details in the pane, with the score ("The AI said 90% sure. It was right 12 of 13 times."). While a bet is open you can make your own call there, or with `/call pass` or `/call fail`. A lost bet also shows one message, no sound: `Munch: "Sure of itself. Wrong. Ha." The AI bet "pass", 95% sure. The run failed.` A won or void bet shows none.
+The main AI is asked to say, before each test or build run, what it expects (`pass` or `fail`) and how sure it is (50% to 99%). A run of the main AI with no bet is refused, with the reason, twice per turn at most; then it goes through and is counted as "a run without a bet". A subagent's runs are not asked. The real result settles the bet. A bet on a result that was already known (no edit or write since the last run that could be read) is void. Bets show under Details in the pane (`/lie-eater details`, or `d`), with the score ("The AI said 90% sure. It was right 12 of 13 times."). While a bet is open you can make your own call there, or with `/call pass` or `/call fail`. A lost bet also shows one message, no sound: `Munch: "Sure of itself. Wrong. Ha." The AI bet "pass", 95% sure. The run failed.` A won or void bet shows none.
 
 ### What this mod can touch
 
@@ -180,7 +184,7 @@ The main AI is asked to say, before each test or build run, what it expects (`pa
 
 The games found fourteen faults; a code review found eleven more, in shapes no game had used. Each was fixed with a test that failed first. One test sends 5,760 honest shapes of a test command through the rules: none reads a pass as a fail or a fail as a pass. (Since this version a shape with an extra flag or a value set in front, like `CI=1 npm test`, is "not checked": it is not the full check.) Two other models attacked the earlier version ([the red team](docs/superpowers/specs/2026-11-20-lie-eater-design.md#22-compare-files-not-text)); each row of their table of attacks is now a test. Their second round ([section 23](docs/superpowers/specs/2026-11-20-lie-eater-design.md#23-frozen-means-frozen)) closed "added to" and bound the full check to one command and one folder. What stays open is in the limits. A new kind of project will find more: please report a result that you think is wrong, with `.lie-eater/receipts.json`.
 
-**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each is replayed through the same rules the live mod uses, and ends with a `done` call. One command reproduces the table and runs the mod's 299 tests:
+**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each is replayed through the same rules the live mod uses, and ends with a `done` call. One command reproduces the table and runs the mod's 310 tests:
 
 ```
 claude plugin test .
@@ -211,7 +215,7 @@ In Lie Eater the proof is also fixed before the work: the check files are frozen
 - **A full check that writes into the project** is not fresh when it writes into a folder that counts as the project. Left out of the fingerprint: `coverage`, `htmlcov`, the other folders named above, and every plain name that the project's own `.gitignore` lists (`out/` at any depth, `/reports` at the root only; patterns with `*` are not read). Check files inside such a folder are still found and frozen. So a run that writes its coverage report is fresh; a run that writes `report.txt` into a tracked folder is "not checked" each time: put that name in `.gitignore`. The other side of it: code in a folder that `.gitignore` names is outside the proof, and an edit to `.gitignore` can put a folder there.
 - **Any change after the run counts**, also a change to docs (`CHANGELOG.md`): the fingerprint covers all files of the walk. Run the full check last.
 - **Honest work can be red by design.** A renamed check file is "moved or deleted"; a formatter, a merge, a `git pull` or a branch switch that changes a check file is "changed"; a test added to an existing check file (anywhere, also at its end), an import added to one, or a fixture added to `conftest.py`, is a change; a table that replaces repeated tests is a change. Lie Eater cannot tell your change from the AI's. That is what `/accept` is for.
-- **You may press Accept without reading.** Then the change stands. The pane shows which file changed and the lines that are gone; read them first.
+- **You may press Accept without reading.** Then the change stands. The pane shows which file changed; its Details (`d`, or `/lie-eater details`) show the lines that are gone; read them first.
 - **The full check must be run plain.** A CI habit (`-x`, `--coverage`, `CI=1 npm test`) gives "not checked", not "checked". Lock what you run with `/check <command>`.
 - **A subagent's run of the full check counts** as proof, like the main AI's (the fingerprint and the folder decide), and it needs no bet.
 - **Bets are still required** of the main AI. They cost one extra step per test run. A change made through the shell is not seen by the bet rule: a run after it can be "void" (nothing changed).
@@ -228,7 +232,7 @@ In Lie Eater the proof is also fixed before the work: the check files are frozen
 - **"No new check" speaks of the work since the last ✓.** After a green result the watch is armed again with the new check files frozen, so a second `done` with nothing changed says "The AI added no new check for this change." even when the first green named new checks.
 - **A check file that cannot be read stays unread.** A file of the frozen set that could not be read when the watch was armed (for example one over 4 MiB, the engine's limit for one read) makes every result at best "not checked" until a new watch is armed: after an accepted ✗, or in a new session.
 - **Big projects:** past 400 folders or 5,000 files, or when a folder cannot be listed, the project is not read to its end, and no result is better than "not checked". The frozen texts are kept in the session's memory (2,000,000 characters in all; past that a file is kept as a hash). Nothing was measured on a large project, and nothing in Go or Rust.
-- **Munch was not seen on a real screen yet.** Its face is drawn with `▀`, `▄` and `█` in three colours given as hex; the test kit checks the tree, not the paint. It is three text rows high, so at the usual widths the top of the pane is one row taller than before. Two cases grow more: a pane wide enough to show the intro on one row (two rows more), and a pane under 40 columns, which draws the four-row plain art.
+- **The fox and the small pane were not seen on a real screen yet.** The face is drawn with `▀`, `▄` and `█` in six colours given as hex, 5 text rows high and 16 wide; the test kit checks the tree, not the paint. By default the pane is at most 7 rows at 100 columns: the face beside the result, one row of buttons, one hint. In a narrower pane a long result line wraps and the top grows; under 45 columns the pane draws the 4-row plain fox; the demo's hint row is longer and wraps under about 110 columns. That the pane closes at your next prompt, and that `d` toggles the Details, are tested in the test kit only.
 - **The sound plays on macOS only.** The status line, the pane and the buttons are tested in the test kit; the owner played the two-act demo on a real screen on 20 Nov 2026 (the red result, the pane, the repair, the green result and the closing lines all showed); the buttons show no key there, so a line under them names the key and the command.
 
 The name is inspired by the manga Usogui. No artwork or text from it is used.

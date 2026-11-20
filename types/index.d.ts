@@ -79,7 +79,8 @@ declare module 'claude-code' {
       records: Shaped<ToolRecord[]>; watch: Shaped<Terms | null>; bets: Shaped<Bet[]>
       rulings: Shaped<Ruling[]>; ledger: Shaped<Ledger>; meta: Shaped<Meta>
       frozen: Shaped<Frozen>; parked: Shaped<Parked | null>
-      closing: Shaped<string[] | null>   // the demo's closing lines, shown in the pane until the next result
+      closing: Shaped<string[] | null>   // the demo's closing lines, shown in the pane until the next result or the pane closes
+      details: Shaped<boolean>   // whether the pane shows Details: asked with /lie-eater details or d, hidden again when the pane closes
     }
   }
 }

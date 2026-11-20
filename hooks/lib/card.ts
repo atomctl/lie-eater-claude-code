@@ -11,41 +11,47 @@ const COLOUR = { checked: C.good, distrust: C.bad, unchecked: C.note } as const
 
 // Munch, the face of the result: a square at the top right.
 const CHARACTER = { x: W - 136, y: 24, size: 96 }
-const MUNCH = { body: '#E8812F', shine: '#F4A462', dark: '#2B1B12', white: '#FFFFFF' }
+const FOX = { outline: '#3A2F45', fur: '#F3EDDF', red: '#C34458', dark: '#1E1722', eye: '#F2C14E', tongue: '#D9485A' }
 const FACE: Record<Result, Face> = { checked: 'pleased', distrust: 'alarmed', unchecked: 'hungry' }
 
-const eyes = (draw: (x: number) => string): string => [34, 66].map(draw).join('\n')
-const PLAIN_EYES = eyes(x => `<circle data-part="eye" cx="${x}" cy="38" r="5" fill="${MUNCH.dark}"/>`)
+const EDGE = `stroke="${FOX.outline}" stroke-width="3" stroke-linejoin="round"`
+const LINE = `stroke="${FOX.dark}" stroke-linecap="round" fill="none"`
+// The fox's head, the same in every mood: two upright ears with red inside, wide cheeks, a narrow chin, red cheek marks, a small dark nose.
+const HEAD = [
+  `<polygon data-part="ear" points="10,6 42,30 8,48" fill="${FOX.fur}" ${EDGE}/>`,
+  `<polygon data-part="ear" points="90,6 58,30 92,48" fill="${FOX.fur}" ${EDGE}/>`,
+  `<polygon data-part="inner-ear" points="14,16 32,30 13,40" fill="${FOX.red}"/>`,
+  `<polygon data-part="inner-ear" points="86,16 68,30 87,40" fill="${FOX.red}"/>`,
+  `<path data-part="head" d="M8 40 Q50 20 92 40 L96 60 Q82 82 50 95 Q18 82 4 60 Z" fill="${FOX.fur}" ${EDGE}/>`,
+  `<ellipse data-part="cheek" cx="20" cy="66" rx="6" ry="4" fill="${FOX.red}"/>`,
+  `<ellipse data-part="cheek" cx="80" cy="66" rx="6" ry="4" fill="${FOX.red}"/>`,
+  `<ellipse data-part="nose" cx="50" cy="68" rx="5" ry="3.5" fill="${FOX.dark}"/>`,
+].join('\n')
+
+// Each eye, drawn at its centre x (the right eye mirrored by `s`).
+const eyes = (draw: (x: number, s: number) => string): string => [32, 68].map((x, i) => draw(x, i === 0 ? 1 : -1)).join('\n')
 const EYES: Record<Face, string> = {
-  watching: PLAIN_EYES,
-  hungry: PLAIN_EYES,
-  pleased: eyes(x => `<path data-part="eye" d="M${x - 7} 41 Q${x} 31 ${x + 7} 41" stroke="${MUNCH.dark}" stroke-width="5" stroke-linecap="round" fill="none"/>`),
-  alarmed: eyes(x => `<g data-part="eye"><circle cx="${x}" cy="35" r="9" fill="${MUNCH.white}"/><circle cx="${x}" cy="36" r="5" fill="${MUNCH.dark}"/></g>`),
+  // sly, half closed: a lid line with a dark half under it
+  watching: eyes((x, s) => `<path data-part="eye" d="M${x - 9 * s} 49 L${x + 9 * s} 53 Q${x - s} 58 ${x - 9 * s} 49 Z" fill="${FOX.dark}"/>`),
+  // happy arcs
+  pleased: eyes(x => `<path data-part="eye" d="M${x - 8} 54 Q${x} 44 ${x + 8} 54" stroke-width="5" ${LINE}/>`),
+  // wide yellow eyes with dark pupils
+  alarmed: eyes(x => `<g data-part="eye"><circle cx="${x}" cy="50" r="8" fill="${FOX.eye}" stroke="${FOX.dark}" stroke-width="2"/><circle cx="${x}" cy="51" r="3.5" fill="${FOX.dark}"/></g>`),
+  // plain eyes
+  hungry: eyes(x => `<circle data-part="eye" cx="${x}" cy="51" r="4.5" fill="${FOX.dark}"/>`),
 }
-const tooth = (points: string): string => `<polygon data-part="tooth" points="${points}" fill="${MUNCH.white}"/>`
 const MOUTHS: Record<Face, string> = {
-  watching: [`<rect data-part="mouth" x="22" y="62" width="56" height="6" rx="3" fill="${MUNCH.dark}"/>`, tooth('40,67 48,67 44,75'), tooth('52,67 60,67 56,75')].join('\n'),
-  pleased: [
-    `<path data-part="mouth" d="M20 58 Q50 88 80 58" stroke="${MUNCH.dark}" stroke-width="6" stroke-linecap="round" fill="none"/>`,
-    tooth('37,73 46,76 42,84'),
-    tooth('54,76 63,73 58,84'),
-  ].join('\n'),
-  alarmed: [
-    `<path data-part="mouth" d="M16 53 Q50 47 84 53 Q80 88 50 88 Q20 88 16 53 Z" fill="${MUNCH.dark}"/>`,
-    ...[0, 1, 2, 3, 4, 5, 6].map(i => tooth(`${22 + 8 * i},52 ${30 + 8 * i},52 ${26 + 8 * i},62`)),
-    ...[0, 1, 2, 3].map(i => tooth(`${34 + 8 * i},84 ${42 + 8 * i},84 ${38 + 8 * i},75`)),
-  ].join('\n'),
-  hungry: [`<ellipse data-part="mouth" cx="50" cy="68" rx="10" ry="9" fill="${MUNCH.dark}"/>`, tooth('45,60 55,60 50,67')].join('\n'),
+  watching: `<path data-part="mouth" d="M44 76 Q47 79 50 76 Q53 79 56 76" stroke-width="2.5" ${LINE}/>`,
+  pleased: `<path data-part="mouth" d="M40 75 Q50 86 60 75" stroke-width="3" ${LINE}/>`,
+  // closed: the eyes are open wide, the mouth is not
+  alarmed: `<path data-part="mouth" d="M45 78 L55 78" stroke-width="3" ${LINE}/>`,
+  // a small open mouth and a red tongue
+  hungry: [`<ellipse data-part="mouth" cx="50" cy="79" rx="5" ry="5.5" fill="${FOX.dark}"/>`, `<ellipse data-part="tongue" cx="50" cy="82" rx="3.5" ry="2.5" fill="${FOX.tongue}"/>`].join('\n'),
 }
 
-/** Munch in a 100 by 100 box: one round body, then the eyes and the mouth of the face. */
+/** Munch in a 100 by 100 box: a white fox's head, then the eyes and the mouth of the face. */
 export function munchSvg(face: Face): string {
-  return [
-    `<ellipse cx="50" cy="54" rx="44" ry="40" fill="${MUNCH.body}"/>`,
-    `<ellipse cx="34" cy="26" rx="12" ry="5" fill="${MUNCH.shine}"/>`,
-    EYES[face],
-    MOUTHS[face],
-  ].join('\n')
+  return [HEAD, EYES[face], MOUTHS[face]].join('\n')
 }
 
 const esc = (text: string): string =>

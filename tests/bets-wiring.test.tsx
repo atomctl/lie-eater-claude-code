@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { BET_DESCRIPTION, BET_SCHEMA, gateText } from '../hooks/lib/bets'
 import { DONE_DESCRIPTION, DONE_SCHEMA } from '../hooks/lib/referee'
-import { bash, bet, betRun, endTurn, paneLines, project, run, start, world } from './kit'
+import { bash, bet, betRun, detailLines, endTurn, project, run, showDetails, start, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' })
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
@@ -62,7 +62,7 @@ test('an agent that ignores the gate is never stuck: the third run goes through 
   expect(await bash($, 'npm test')).toEqual({ deny: gateText('npm test') })
   expect(await bash($, 'npm test')).toEqual({ deny: gateText('npm test') })
   expect(await bash($, 'npm test')).toMatchObject({ text: '34 passed in 1s' })
-  expect(has(await paneLines($), '1 run without a bet')).toBe(true)
+  expect(has(await detailLines($), '1 run without a bet')).toBe(true)
 
   await $.prompt.submit({ text: 'go on' } as never)
   expect(await bash($, 'npm test')).toEqual({ deny: gateText('npm test') })
@@ -90,7 +90,7 @@ test('a bet is taken, shown as open, and is not a recorded tool call', async ($,
   expect(await bet($)).toMatchObject({ result: 'Bet #1 taken: the next run will pass, 90% sure. The full check of this project is `npm test`.' })
   expect(await bet($)).toMatchObject({ result: 'Bet refused: a bet is already open.' })
 
-  const lines = await paneLines($)
+  const lines = await detailLines($)
   expect(has(lines, '#1 the next run will pass, 90% sure')).toBe(true)
   expect(has(lines, 'OPEN')).toBe(true)
   expect(has(lines, 'No tool calls yet.')).toBe(true)
@@ -109,7 +109,7 @@ test('a lost bet: the agent is told on the result; the person gets one toast fro
   )
   expect(seen).toMatchObject({ toasts: ['Munch: "Sure of itself. Wrong. Ha." The AI bet "pass", 90% sure. The run failed.'], sounds: 0 })
 
-  const lines = await paneLines($)
+  const lines = await detailLines($)
   expect(has(lines, 'LOST · npm test → 3 failed, 31 passed in 2.10s')).toBe(true)
   expect(has(lines, 'The AI said "90% sure". It was right 0 of 1 times.')).toBe(true)
   expect(has(lines, 'Bets: 0 won, 1 lost')).toBe(true)
@@ -169,7 +169,7 @@ test('a bet on a result that was already known is void', async ($, on) => {
   )
   // a won and a void bet: no toast
   expect(seen.toasts).toEqual([])
-  const lines = await paneLines($)
+  const lines = await detailLines($)
   expect(has(lines, 'VOID · nothing changed since the last run')).toBe(true)
   expect(has(lines, 'Bets: 1 won, 0 lost, 1 void')).toBe(true)
 
@@ -185,10 +185,10 @@ test('a run with no readable result leaves the bet open; the end of the turn mak
   await start($)
   const out = await betRun($, 'npm test')
   expect(out.context).toBeUndefined()
-  expect(has(await paneLines($), 'OPEN')).toBe(true)
+  expect(has(await detailLines($), 'OPEN')).toBe(true)
 
   await endTurn($, 'Still running.')
-  expect(has(await paneLines($), 'VOID · no run settled it')).toBe(true)
+  expect(has(await detailLines($), 'VOID · no run settled it')).toBe(true)
   expect(seen.toasts).toEqual([])
 })
 
@@ -200,7 +200,7 @@ test("a subagent's run does not settle the main agent's bet", async ($, on) => {
   await bet($)
   await $.tool.call({ tool: 'Bash', command: 'npm test', agentId: 'a1' })
 
-  expect(has(await paneLines($), 'OPEN')).toBe(true)
+  expect(has(await detailLines($), 'OPEN')).toBe(true)
 })
 
 test('a bad bet is refused and the gate stays shut', async ($, on) => {
@@ -229,7 +229,8 @@ test('while a bet is open the person may call it too; the pane keeps both scores
     })
 
   await start($)
-  let ui = await mount()
+  // the call buttons are under Details
+  let ui = await showDetails(await mount())
   expect(await ui.find({ key: 'call-pass' })).toBeUndefined()
   await ui.unmount()
 
@@ -238,10 +239,10 @@ test('while a bet is open the person may call it too; the pane keeps both scores
   expect(await ui.find({ key: 'call-pass' })).toBeDefined()
   await ui.press({ key: 'call-fail' })
   await ui.unmount()
-  expect(has(await paneLines($), 'OPEN · you: it will fail')).toBe(true)
+  expect(has(await detailLines($), 'OPEN · you: it will fail')).toBe(true)
 
   await bash($, 'npm test')
-  const lines = await paneLines($)
+  const lines = await detailLines($)
   // the AI lost its bet: one toast; the person's own call adds none
   expect(seen.toasts).toEqual(['Munch: "Sure of itself. Wrong. Ha." The AI bet "pass", 90% sure. The run failed.'])
   expect(has(lines, 'You 1 of 1 · the AI 0 of 1')).toBe(true)
@@ -265,7 +266,7 @@ test('/call does the same as the buttons, and says so when no bet is open', asyn
   await bash($, 'npm test')
 
   expect(seen.toasts).toEqual([])
-  expect(has(await paneLines($), 'You 0 of 1 · the AI 1 of 1')).toBe(true)
+  expect(has(await detailLines($), 'You 0 of 1 · the AI 1 of 1')).toBe(true)
 })
 
 test('a chain that failed before the test run started does not lose the bet', async ($, on) => {
@@ -282,12 +283,12 @@ test('a chain that failed before the test run started does not lose the bet', as
   await bet($)
   await bash($, 'cd api && npm test')
 
-  expect(has(await paneLines($), 'OPEN')).toBe(true)
+  expect(has(await detailLines($), 'OPEN')).toBe(true)
 
   // the run that does start settles that bet: its result was not known before
   started = true
   await bash($, 'npm test')
 
-  expect(has(await paneLines($), 'WON · npm test → 34 passed in 1s')).toBe(true)
-  expect(has(await paneLines($), 'VOID')).toBe(false)
+  expect(has(await detailLines($), 'WON · npm test → 34 passed in 1s')).toBe(true)
+  expect(has(await detailLines($), 'VOID')).toBe(false)
 })

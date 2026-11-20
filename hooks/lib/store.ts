@@ -19,6 +19,7 @@ const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SH
 const ledger = atom({ plugin: 'lie-eater', key: 'ledger' } as const, EMPTY_LEDGER, { shape: SHAPE.ledger })
 const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
 const closing = atom({ plugin: 'lie-eater', key: 'closing' } as const, null, { shape: SHAPE.closing })
+const details = atom({ plugin: 'lie-eater', key: 'details' } as const, false, { shape: SHAPE.details })
 
 /** Records one finished tool call and hands back the record. */
 export async function remember(
@@ -55,6 +56,7 @@ export async function startTurn($: EngineInterface): Promise<void> {
 export type PaneView = {
   now: Now
   closing: readonly string[] | null
+  details: boolean
   watch: Terms | null
   last: Ruling | undefined
   records: readonly ToolRecord[]
@@ -72,6 +74,7 @@ export async function paneView($: EngineInterface): Promise<PaneView> {
   return {
     now: nowOf({ armed: w !== null, changed: w !== null && hasChanged(w), ...(last === undefined ? {} : { last }) }),
     closing: await read($, closing),
+    details: await read($, details),
     watch: w,
     last,
     records: await read($, records),
@@ -79,4 +82,15 @@ export async function paneView($: EngineInterface): Promise<PaneView> {
     unbet: (await read($, meta)).unbet,
     ledger: await read($, ledger),
   }
+}
+
+/** Shows or hides Details in the pane (`/lie-eater details`, `/lie-eater`, the `d` key). */
+export async function showDetails($: EngineInterface, show: (shown: boolean) => boolean): Promise<void> {
+  await update($, details, show)
+}
+
+/** The pane closed: the next time it opens, it is small again, and the demo's closing lines went with it. */
+export async function paneClosed($: EngineInterface): Promise<void> {
+  await update($, details, () => false)
+  await update($, closing, () => null)
 }

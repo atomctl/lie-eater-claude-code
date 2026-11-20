@@ -1,5 +1,5 @@
-// Munch, the face of the result in the pane: pixel art of block characters,
-// the plain art in a narrow pane, and Munch's line under the result lines.
+// Munch, the face of the result in the pane: a white fox in pixel art of block
+// characters, the plain fox in a narrow pane, and Munch's line beside the result.
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
@@ -12,57 +12,69 @@ const passing = () => ({ result: {}, text: '34 passed in 1s' })
 const SKIPPED = MATH.replace("it('adds'", "it.skip('adds'")
 const rowText = (face: Face) => faceRows(face).map(spans => spans.map(s => s.text).join(''))
 
-test('the four faces: three text rows of at most 14 blocks, one body, only the eyes and the mouth change', async () => {
-  const outline = (face: Face) => PIXELS[face].map(row => row.replace(/[ODW]/g, '#'))
-
-  for (const face of FACES) {
-    expect(PIXELS[face]).toHaveLength(6)
-    expect(faceRows(face)).toHaveLength(3)
-    expect(rowText(face).every(row => row.length <= 14 && /^[ █▀▄]+$/.test(row))).toBe(true)
-    expect(outline(face)).toEqual(outline('watching'))
-    // the eyes and the mouth stay inside the body: its edge is body colour all round
-    for (const [r, row] of PIXELS[face].entries()) {
-      const inside = row.replace(/^\.+|\.+$/g, '')
-      const edge = r === 0 || r === 5 ? inside : `${inside.at(0)}${inside.at(-1)}`
-
-      expect(`${face} ${r}: ${/^O+$/.test(edge)}`).toBe(`${face} ${r}: true`)
-    }
-  }
-  // every eye and tooth pixel has body all round it: nothing depends on the terminal's background
-  for (const face of FACES) {
-    const px = PIXELS[face]
-    const open = px.flatMap((row, r) => [...row].flatMap((p, c) => (p === 'D' || p === 'W') && [px[r - 1]?.[c], px[r + 1]?.[c], row[c - 1], row[c + 1]].some(n => n === undefined || n === '.') ? [`${face} ${r},${c}`] : []))
-
-    expect(open).toEqual([])
-  }
-  // dark eyes in every face; white teeth under the closed mouth and in an open one, none in the smile
-  expect(FACES.filter(face => PIXELS[face].join('').includes('W'))).toEqual(['watching', 'alarmed', 'hungry'])
-  expect(FACES.every(face => PIXELS[face].slice(1, 3).join('').includes('D'))).toBe(true)
-  expect(new Set(FACES.map(face => PIXELS[face].join('\n'))).size).toBe(4)
+test('the four faces are the owner\'s fox, pixel for pixel', async () => {
+  expect(PIXELS).toEqual({
+    watching: ['.oo..........oo.', 'ofro........orfo', 'offfoooooooofffo', 'offffffffffffffo', 'ofmmffffffffmmfo', 'offfmmffffmmfffo', '.orffffmmffffro.', '..offfffmmmffo..', '....offffffo....', '......oooo......'],
+    pleased: ['.oo..........oo.', 'ofro........orfo', 'offfoooooooofffo', 'offffffffffffffo', 'offmmffffffmmffo', 'ofmffmffffmffmfo', '.orffffmmffffro.', '..offmffffmffo..', '....ofmmmmfo....', '......oooo......'],
+    alarmed: ['.oo..........oo.', 'ofro........orfo', 'offfoooooooofffo', 'offffffffffffffo', 'ofeeeffffffeeefo', 'ofemeffffffemefo', '.orffffmmffffro.', '..offfmmmmfffo..', '....offffffo....', '......oooo......'],
+    hungry: ['.oo..........oo.', 'ofro........orfo', 'offfoooooooofffo', 'offffffffffffffo', 'offffffffffffffo', 'offmmffffffmmffo', '.orffffmmffffro.', '..offffmmffffo..', '....offggffo....', '......oooo......'],
+  })
+  expect(COLOURS).toEqual({ o: '#3A2F45', f: '#F3EDDF', r: '#C34458', m: '#1E1722', e: '#F2C14E', g: '#D9485A' })
 })
 
-test('a face is drawn two pixels to a character, in the three colours only', async () => {
-  const { O, D, W } = COLOURS
+test('one fox, four moods: five text rows of 16 blocks; only the eyes and the mouth change, and no face has teeth', async () => {
+  const outline = (face: Face) => PIXELS[face].map(row => row.replace(/[^.o]/g, '#'))
 
-  // ▀ draws the top pixel in its colour and the bottom pixel in its background
-  expect(faceRows('watching')).toEqual([
-    [{ text: ' ' }, { text: '▄▄', color: O }, { text: '▀', color: O, backgroundColor: D }, { text: '███', color: O }, { text: '▀', color: O, backgroundColor: D }, { text: '▄▄', color: O }, { text: ' ' }],
-    [{ text: '██', color: O }, { text: '▀▀▀▀▀▀▀', color: O, backgroundColor: D }, { text: '██', color: O }],
-    [{ text: ' ' }, { text: '▀██', color: O }, { text: '▀', color: W, backgroundColor: O }, { text: '█', color: O }, { text: '▀', color: W, backgroundColor: O }, { text: '██▀', color: O }, { text: ' ' }],
+  for (const face of FACES) {
+    expect(PIXELS[face]).toHaveLength(10)
+    expect(faceRows(face)).toHaveLength(5)
+    expect(rowText(face).every(row => row.length === 16 && /^[ █▀▄]+$/.test(row))).toBe(true)
+    expect(outline(face)).toEqual(outline('watching'))
+    // the ears and the red cheek marks are the same in every mood
+    expect(PIXELS[face].slice(0, 4)).toEqual(PIXELS.watching.slice(0, 4))
+    expect([...PIXELS[face].join('')].filter(p => p === 'r')).toHaveLength(4)
+  }
+  expect(new Set(FACES.map(face => PIXELS[face].join('\n'))).size).toBe(4)
+  // the alarmed fox: wide yellow eyes, and a mouth that stays closed (no tongue, no white)
+  expect(FACES.filter(face => PIXELS[face].join('').includes('e'))).toEqual(['alarmed'])
+  expect(FACES.filter(face => PIXELS[face].join('').includes('g'))).toEqual(['hungry'])
+  expect(Object.keys(COLOURS)).not.toContain('W')
+  expect(Object.values(COLOURS)).not.toContain('#FFFFFF')
+})
+
+test('a face is drawn two pixels to a character, in the fox\'s six colours only', async () => {
+  const { o, f, r } = COLOURS
+
+  // ▀ draws the top pixel in its colour and the bottom pixel in its background; an empty pixel is no colour
+  expect(faceRows('watching')[0]).toEqual([
+    { text: '▄', color: o },
+    { text: '▀', color: o, backgroundColor: f },
+    { text: '▀', color: o, backgroundColor: r },
+    { text: '▄', color: o },
+    { text: '        ' },
+    { text: '▄', color: o },
+    { text: '▀', color: o, backgroundColor: r },
+    { text: '▀', color: o, backgroundColor: f },
+    { text: '▄', color: o },
   ])
   const used = new Set(FACES.flatMap(face => faceRows(face).flat().flatMap(s => [s.color, s.backgroundColor])))
   used.delete(undefined)
   expect([...used].sort()).toEqual(Object.values(COLOURS).sort())
 })
 
-test('the plain art, for a pane too narrow for the pixel art', async () => {
-  expect(PIXEL_COLUMNS).toBe(40)
+test('the plain fox, for a pane too narrow for the pixel art: pointed ears, four moods, no teeth', async () => {
+  expect(PIXEL_COLUMNS).toBe(45)
   expect(PLAIN).toEqual({
-    watching: [' .----.', '( o  o )', '(  --  )', " `----'"],
-    pleased: [' .----.', '( ^  ^ )', '( \\__/ )', " `----'"],
-    alarmed: [' .----.', '( O  O )', '( \\/\\/ )', " `----'"],
-    hungry: [' .----.', '( o  o )', '(  ()  )', " `----'"],
+    watching: ['/\\_____/\\', '( -   - )', ' \\  .  /', '  \\___/'],
+    pleased: ['/\\_____/\\', '( ^   ^ )', ' \\  w  /', '  \\___/'],
+    alarmed: ['/\\_____/\\', '( O   O )', ' \\  -  /', '  \\___/'],
+    hungry: ['/\\_____/\\', '( o   o )', ' \\  O  /', '  \\___/'],
   })
+  for (const face of FACES) {
+    expect(PLAIN[face].every(row => row.length <= 9)).toBe(true)
+    // no row of teeth: no zigzag, no run of v or w
+    expect(PLAIN[face].join('\n')).not.toMatch(/\\\/\\\/|\/\\\/\\|[vVwW]{2}/)
+  }
 })
 
 // ---- in the pane ----
@@ -83,17 +95,19 @@ async function topRow($: Engine, bodyColumns = 100) {
 
   return {
     face: face === undefined ? [] : kids(face).filter(isNode).map(textOf),
+    width: face?.props?.width,
     words: words === undefined ? [] : kids(words).filter(isNode).map(n => ({ text: textOf(n), dim: n.props?.dimColor === true })),
   }
 }
 
-test('the pane before any result: the watching face, and at its right the intro and Munch\'s line, dim', async ($, on) => {
+test('the pane before any result: the watching fox, and at its right the intro and Munch\'s line, dim', async ($, on) => {
   world(on, project())
   on('tool.call', passing)
   await start($)
 
   expect(await topRow($)).toEqual({
     face: rowText('watching'),
+    width: 17,
     words: [
       { text: 'When the AI says "done", Lie Eater checks the proof: the checks must pass, and none may be removed or switched off.', dim: false },
       { text: '"Nothing to eat yet."', dim: true },
@@ -101,7 +115,7 @@ test('the pane before any result: the watching face, and at its right the intro 
   })
 })
 
-test('a hidden changed check: the alarmed face, the three result lines as they are, then "You lied. I ate it."', async ($, on) => {
+test('a hidden changed check: the alarmed fox, the three result lines as they are, then "You lied. I ate it."', async ($, on) => {
   const opts = project()
   world(on, opts)
   on('tool.call', passing)
@@ -113,6 +127,7 @@ test('a hidden changed check: the alarmed face, the three result lines as they a
 
   expect(await topRow($)).toEqual({
     face: rowText('alarmed'),
+    width: 17,
     words: [
       { text: '✗ don\'t trust "done"', dim: false },
       { text: 'The AI changed 1 line in the check file tests/math.test.ts.', dim: false },
@@ -124,7 +139,7 @@ test('a hidden changed check: the alarmed face, the three result lines as they a
   expect(answer).not.toMatch(/[█▀▄]|lied|ate it|Munch/)
 })
 
-test('green with no new check: the pleased face and its line', async ($, on) => {
+test('green with no new check: the pleased fox and its line', async ($, on) => {
   world(on, project())
   on('tool.call', passing)
   await start($)
@@ -135,12 +150,13 @@ test('green with no new check: the pleased face and its line', async ($, on) => 
   expect(await topRow($)).toMatchObject({ face: rowText('pleased'), words: expect.arrayContaining([{ text: '"Green. Nothing new got tested."', dim: true }]) })
 })
 
-test('a project with no checks: the hungry face', async ($, on) => {
+test('a project with no checks: the hungry fox', async ($, on) => {
   world(on, { files: {}, dirs: { tests: [] } })
   await start($)
 
   expect(await topRow($)).toEqual({
     face: rowText('hungry'),
+    width: 17,
     words: [
       { text: '? not checked', dim: false },
       { text: 'This project has no checks yet.', dim: false },
@@ -149,10 +165,10 @@ test('a project with no checks: the hungry face', async ($, on) => {
   })
 })
 
-test(`a pane narrower than ${PIXEL_COLUMNS} columns draws the plain art`, async ($, on) => {
+test(`a pane narrower than ${PIXEL_COLUMNS} columns draws the plain fox`, async ($, on) => {
   world(on, project())
   await start($)
 
-  expect((await topRow($, PIXEL_COLUMNS - 1)).face).toEqual(PLAIN.watching)
-  expect((await topRow($, PIXEL_COLUMNS)).face).toEqual(rowText('watching'))
+  expect(await topRow($, PIXEL_COLUMNS - 1)).toMatchObject({ face: PLAIN.watching, width: 10 })
+  expect(await topRow($, PIXEL_COLUMNS)).toMatchObject({ face: rowText('watching'), width: 17 })
 })

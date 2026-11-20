@@ -25,6 +25,7 @@ export const SHAPE = {
   frozen: 'frozen-2',
   parked: 'parked-2',
   closing: 'closing-1',
+  details: 'details-1',
   bets: 'bets-1',
   ledger: 'ledger-2',
   meta: 'meta-3',

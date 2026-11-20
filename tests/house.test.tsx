@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bet, betRun, done, editCode, paneLines, project, run, start, world } from './kit'
+import { bet, betRun, detailLines, done, editCode, project, run, start, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' })
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
@@ -30,7 +30,7 @@ test('a settled bet goes into the ledger file of the project', async ($, on) => 
   expect(ledger.version).toBe(1)
   expect(ledger.bets).toHaveLength(1)
   expect(ledger.bets[0]).toMatchObject({ confidence: 0.9, won: false })
-  expect(has(await paneLines($), 'In this repository the AI said "90% sure" and was right 0 of 1 times.')).toBe(true)
+  expect(has(await detailLines($), 'In this repository the AI said "90% sure" and was right 0 of 1 times.')).toBe(true)
 })
 
 test('a ledger of the version before: its bets count, its games and debt are not shown', async ($, on) => {
@@ -42,7 +42,7 @@ test('a ledger of the version before: its bets count, its games and debt are not
   await start($)
   expect(seen).toMatchObject({ toasts: [] })
   expect(seen.status.at(-1)).toBe('Lie Eater · watching')
-  expect(has(await paneLines($), 'In this repository the AI said "80% sure" and was right 1 of 1 times.')).toBe(true)
+  expect(has(await detailLines($), 'In this repository the AI said "80% sure" and was right 1 of 1 times.')).toBe(true)
   await betRun($, 'npm test')
   expect(ledgerOf(seen)).toEqual({
     version: 1,

@@ -98,21 +98,37 @@ test('the card draws Munch where the place was kept, with the face of the result
   expect(card(green, ruling(green))).not.toMatch(/\(\^_\^\)|\(-_-\)|Referee/)
 })
 
-test('Munch as a picture: one round body, two eyes, a mouth, and teeth in every face', async () => {
+test('Munch as a picture: one white fox with a dark outline, and only the eyes and the mouth change; no teeth', async () => {
   const faces = ['watching', 'pleased', 'alarmed', 'hungry'] as const
-  const body = (svg: string) => svg.split('\n').slice(0, 2).join('\n')
+  const parts = (svg: string, part: string) => svg.split('\n').filter(l => l.includes(`data-part="${part}"`))
+  const head = (svg: string) => svg.split('\n').filter(l => /data-part="(ear|inner-ear|head|cheek|nose)"/.test(l))
 
   for (const face of faces) {
     const svg = munchSvg(face)
-    expect(body(svg)).toBe(body(munchSvg('watching')))
-    expect(svg).toContain('<ellipse cx="50" cy="54" rx="44" ry="40" fill="#E8812F"/>')
-    expect(svg.match(/data-part="eye"/g)).toHaveLength(2)
-    expect(svg.match(/data-part="mouth"/g)).toHaveLength(1)
-    expect(`${face}: ${svg.includes('data-part="tooth"')}`).toBe(`${face}: true`)
+    // two upright ears with red inside, one head, two red cheek marks, a dark nose: the same in every mood
+    expect(head(svg)).toEqual(head(munchSvg('watching')))
+    expect(parts(svg, 'ear')).toHaveLength(2)
+    expect(parts(svg, 'inner-ear').every(l => l.includes('fill="#C34458"'))).toBe(true)
+    expect(parts(svg, 'inner-ear')).toHaveLength(2)
+    expect(parts(svg, 'head')).toHaveLength(1)
+    expect(parts(svg, 'head')[0]).toContain('fill="#F3EDDF" stroke="#3A2F45"')
+    expect(parts(svg, 'cheek').every(l => l.includes('fill="#C34458"'))).toBe(true)
+    expect(parts(svg, 'cheek')).toHaveLength(2)
+    expect(parts(svg, 'nose')).toHaveLength(1)
+    expect(parts(svg, 'eye')).toHaveLength(2)
+    expect(parts(svg, 'mouth')).toHaveLength(1)
+    // no teeth anywhere, and nothing of the round orange creature
+    expect(`${face}: ${/tooth|teeth|#FFFFFF|#E8812F/i.test(svg)}`).toBe(`${face}: false`)
   }
   expect(new Set(faces.map(munchSvg)).size).toBe(4)
-  // a big mouth: the open one spans most of the body
-  expect(munchSvg('alarmed').match(/data-part="tooth"/g)?.length ?? 0).toBeGreaterThanOrEqual(8)
+  // alarmed: wide yellow eyes with dark pupils, and the mouth stays closed (a line, nothing filled)
+  expect(parts(munchSvg('alarmed'), 'eye').every(l => l.includes('fill="#F2C14E"') && l.includes('fill="#1E1722"'))).toBe(true)
+  expect(parts(munchSvg('alarmed'), 'mouth')[0]).toContain('fill="none"')
+  // hungry: a small open mouth with a red tongue; the tongue only there
+  expect(parts(munchSvg('hungry'), 'tongue')).toEqual([expect.stringContaining('fill="#D9485A"')])
+  expect(faces.filter(face => munchSvg(face).includes('data-part="tongue"'))).toEqual(['hungry'])
+  // pleased: happy arcs, not dots
+  expect(parts(munchSvg('pleased'), 'eye').every(l => l.startsWith('<path') && l.includes(' Q'))).toBe(true)
 })
 
 test('the card of a run that could not be read says "not checked"', async () => {

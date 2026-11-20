@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { DEMO_FILES } from '../hooks/lib/demo'
-import { MATH, bash, bet, betRun, done, editCode, editFile, endTurn, paneLines, project, run, start, world } from './kit'
+import { MATH, bash, bet, betRun, detailLines, done, editCode, editFile, endTurn, project, run, start, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' })
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
@@ -20,7 +20,7 @@ test('in a project with no checks the mod only records: no gate, no bet, no resu
   await endTurn($, 'All tests pass. Done.')
 
   expect(seen).toMatchObject({ opens: 0, classified: 0, sounds: 0, toasts: [] })
-  expect(has(await paneLines($), '#1 test ✗ npm test')).toBe(true)
+  expect(has(await detailLines($), '#1 test ✗ npm test')).toBe(true)
 })
 
 test('with no config, the newest plain test run of the session names the full check', async ($, on) => {
@@ -189,7 +189,7 @@ test('/lie-eater demo: a whole check in a throwaway folder, with nothing kept in
   expect(seen.prompts).toHaveLength(1)
   expect(seen.prompts[0]).toMatchObject({ asUser: true })
   expect(seen.prompts[0]?.text).toContain('First go into that folder with `cd .lie-eater/demo`, as a command of its own.')
-  expect(has(await paneLines($), 'Full check: node --test')).toBe(true)
+  expect(has(await detailLines($), 'Full check: node --test')).toBe(true)
 
   // the AI plays: into the folder, a bet, a failing run by itself, a false "done"
   await bash($, 'cd .lie-eater/demo')

@@ -1,7 +1,7 @@
 // Shared stand-ins for the engine, for the wiring tests. Each hook here answers
 // what the engine would; `seen` records what the mod asked for.
 import { mock } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import type { Engine, Mounted } from 'claude-code/testing'
 
 // The kit does not export the type of a test's `on`; the clock mock takes one.
 type On = Parameters<typeof mock.clock>[0]
@@ -24,6 +24,8 @@ export type Seen = {
   toasts: string[]
   sounds: number
   opens: number
+  /** The panes the mod closed, by id. */
+  closes: string[]
   status: (string | undefined)[]
   prompts: { text: string; asUser: boolean }[]
   /** Model calls the mod made: the referee makes none. */
@@ -62,6 +64,7 @@ export function world(on: On, opts: World = {}): Seen {
     toasts: [],
     sounds: 0,
     opens: 0,
+    closes: [],
     status: [],
     prompts: [],
     classified: 0,
@@ -105,6 +108,11 @@ export function world(on: On, opts: World = {}): Seen {
     opts.open?.()
 
     return { value: { isPlaced: true } }
+  })
+  on('ui.close', (_, e) => {
+    seen.closes.push(e.id)
+
+    return { value: undefined }
   })
   on('ui.toast', (_, e) => {
     seen.toasts.push(e.text)
@@ -188,9 +196,26 @@ export async function paneLines($: Engine): Promise<string[]> {
   return lines
 }
 
+/** Shows Details in a mounted pane, as the person pressing `d` does, when they are hidden. Hands the pane back. */
+export async function showDetails<U extends Pick<Mounted, 'find' | 'press'>>(ui: U): Promise<U> {
+  if ((await ui.find({ type: 'Text', text: /^Details$/ })) === undefined) await ui.press({ key: 'details' })
+
+  return ui
+}
+
+/** Every line of words the pane shows with Details open. */
+export async function detailLines($: Engine): Promise<string[]> {
+  const ui = await showDetails(await $.ui.mount({ ...PANE, surface: 'terminal' }))
+  const lines = words(await ui.findAll({ type: 'Text' }))
+  await ui.unmount()
+
+  return lines
+}
+
 export const run = ($: Engine, command: string, args = '') => $.command.run({ command, args } as never)
 export const start = ($: Engine) => $.session.start({ cwd: '/home/me/calc', surface: 'terminal', isInteractive: true })
-export const prompt = ($: Engine, text = 'go on') => $.prompt.submit({ text } as never)
+/** The person types a prompt and presses Enter. */
+export const prompt = ($: Engine, text = 'go on') => $.prompt.submit({ text, origin: { kind: 'composer' }, wait: false } as never)
 export const editCode = ($: Engine, path = 'src/a.ts') => $.tool.call({ tool: 'Edit', file_path: path, old_string: 'a', new_string: 'b' })
 /** The AI edits a file of the project, and the file really changes (`editCode` alone changes no file). */
 export const editFile = ($: Engine, files: Record<string, string>, name = 'a.ts') => {
