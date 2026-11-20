@@ -52,7 +52,7 @@ test('a lie makes a debt; the game that ends broken keeps it', async ($, on) => 
   expect(has(await paneLines($), 'Debt: 1 open')).toBe(true)
 
   const out = await run($, 'rule')
-  expect(out.text?.split('\n').at(-1)).toBe('VERDICT: RULES BROKEN. Debt 0 → 1.')
+  expect(out.text?.split('\n').at(-3)).toBe('VERDICT: RULES BROKEN. Debt 0 → 1.')
   const ledger = ledgerOf(seen)
   expect(ledger.debt).toHaveLength(1)
   expect(ledger.debt[0]).toMatchObject({ verdict: 'npm test', failed: ['verdict'] })
@@ -132,4 +132,50 @@ test('a broken ledger file does not stop the session', async ($, on) => {
   await start($)
   expect(seen.toasts).toEqual([])
   expect((await run($, 'summon', 'npm test')).text).toContain('The referee is present.')
+})
+
+test('a game that ends writes its receipts; a ruling "so far" does not', async ($, on) => {
+  const seen = world(on, { label: () => 'does not say that' })
+  on('tool.call', failing)
+  const written = (name: string) => Object.entries(seen.written).find(([path]) => path.endsWith(name))?.[1]
+
+  await run($, 'summon', 'npm test')
+  await betRun($, 'npm test', 'fail')
+  await endTurn($, 'One test still fails. Shall I look at the parser?')
+  await paneWhen($, l => has(l, 'RULING so far'))
+  expect(written('.lie-eater/receipts.json')).toBeUndefined()
+
+  const out = await run($, 'rule')
+  expect(out.text?.split('\n').at(-1)).toBe('Receipts: .lie-eater/receipts.json')
+  const receipt = JSON.parse(written('.lie-eater/receipts.json') ?? '{}')
+  expect(receipt).toMatchObject({ format: 'lie-eater/receipts', version: 1, terms: { verdict: 'npm test' } })
+  expect(receipt.rulings).toHaveLength(2)
+  expect(receipt.bets).toHaveLength(1)
+  expect(written('.lie-eater/receipts.md')?.startsWith('# Lie Eater receipts')).toBe(true)
+})
+
+test('a game that ends by itself writes its receipts, and an overrule is written into them', async ($, on) => {
+  const seen = world(on, { label: () => DONE })
+  let isGreen = true
+  on('tool.call', () => (isGreen ? passing() : failing()))
+  const receipt = () =>
+    JSON.parse(Object.entries(seen.written).find(([path]) => path.endsWith('.lie-eater/receipts.json'))?.[1] ?? '{}')
+
+  await run($, 'summon', 'npm test')
+  await betRun($, 'npm test')
+  await endTurn($, 'Fixed. All 34 tests pass. The work is done.')
+  await paneWhen($, l => has(l, 'VERDICT'))
+  expect(receipt().rulings).toHaveLength(1)
+  expect(receipt().rulings[0].met).toBe(true)
+
+  isGreen = false
+  await run($, 'summon', 'npm test')
+  await $.tool.call({ tool: 'Edit', file_path: 'src/a.ts', old_string: 'a', new_string: 'b' })
+  await betRun($, 'npm test', 'fail')
+  await endTurn($, 'All tests pass. The work is done.')
+  await paneWhen($, l => has(l, 'A lie was told'))
+  await run($, 'overrule')
+
+  expect(receipt().rulings).toHaveLength(1)
+  expect(receipt().rulings[0]).toMatchObject({ lie: true, overruled: true })
 })

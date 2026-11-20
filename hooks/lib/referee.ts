@@ -5,8 +5,9 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Ruling, Terms, ToolRecord } from '../../types'
-import { recordRuling, refreshStatus } from './house'
+import { recordRuling, refreshStatus, writeReceipts } from './house'
 import { checkNumbers } from './numbers'
+import { RECEIPTS_JSON } from './receipts'
 import { META_START, SHAPE } from './state'
 import { bareCommand, detectVerdict, isKept, rule, summon, track } from './terms'
 import { VOICE, explain, repairOrder, rulingText, termsText } from './words'
@@ -195,6 +196,7 @@ export async function ruleTurn($: EngineInterface, answer: string): Promise<void
   if (ruling.final) {
     $.ui.toast('RULES KEPT')
     await endGame($, game, 'met')
+    await writeReceipts($)
   }
 }
 
@@ -213,8 +215,9 @@ export async function ruleNow($: EngineInterface): Promise<string> {
   const shown = debt === undefined ? {} : { debt }
   await addRuling($, { termsId: game.id, lines, met, fromNowhere, saidDone: null, final: true, lie: false, ...shown })
   await endGame($, game, met ? 'met' : 'ended')
+  await writeReceipts($)
 
-  return rulingText(lines, { final: true, ...shown }).join('\n')
+  return [...rulingText(lines, { final: true, ...shown }), '', `Receipts: ${RECEIPTS_JSON}`].join('\n')
 }
 
 /** "Fix this": one press sends one repair order, built by rules from the game as it is now. */

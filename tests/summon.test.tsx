@@ -193,7 +193,8 @@ test('/rule ends the game now', async ($, on) => {
   await betRun($, 'npm test', 'fail')
   const out = await run($, 'rule')
 
-  expect(out.text?.split('\n').at(-1)).toBe('VERDICT: RULES BROKEN. Debt 0 → 1.')
+  expect(out.text?.split('\n').at(-3)).toBe('VERDICT: RULES BROKEN. Debt 0 → 1.')
+  expect(out.text?.split('\n').at(-1)).toBe('Receipts: .lie-eater/receipts.json')
   expect(out.text).toContain('✗ The tests fail')
   expect(seen.status.at(-1)).toBe('Lie Eater · debt 1')
   expect(has(await paneLines($), 'The rules were broken. The house collects.')).toBe(true)

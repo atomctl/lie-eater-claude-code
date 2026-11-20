@@ -18,7 +18,8 @@ import {
   parseLedger,
   repay,
 } from './ledger'
-import { SHAPE } from './state'
+import { RECEIPTS_JSON, RECEIPTS_MD, buildReceipt, receiptToMarkdown } from './receipts'
+import { META_START, SHAPE } from './state'
 import { VOICE } from './words'
 
 // Each file that touches state declares its own atoms (see state.ts).
@@ -26,6 +27,7 @@ const terms = atom({ plugin: 'lie-eater', key: 'terms' } as const, null, { shape
 const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SHAPE.bets })
 const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { shape: SHAPE.rulings })
 const ledger = atom({ plugin: 'lie-eater', key: 'ledger' } as const, EMPTY_LEDGER, { shape: SHAPE.ledger })
+const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
 
 // Past an import the engine follows `$` only into a function declaration.
 async function today($: EngineInterface): Promise<string> {
@@ -124,6 +126,27 @@ export async function recordRuling(
   return r.final && before !== after ? [before, after] : undefined
 }
 
+/** Writes the receipts of the last game into the person's repository. */
+export async function writeReceipts($: EngineInterface): Promise<void> {
+  const game = await read($, terms)
+
+  if (game === null) {
+    return
+  }
+
+  const receipt = buildReceipt({
+    terms: game,
+    rulings: await read($, rulings),
+    bets: await read($, bets),
+    unbet: (await read($, meta)).unbet,
+    ledger: await read($, ledger),
+    createdAt: await today($),
+  })
+  // A folder that cannot be written to must not stop a ruling.
+  await $.fs.write(RECEIPTS_JSON, `${JSON.stringify(receipt, null, 2)}\n`).catch(() => undefined)
+  await $.fs.write(RECEIPTS_MD, receiptToMarkdown(receipt)).catch(() => undefined)
+}
+
 /** `/overrule`: the person overrules the newest broken ruling of the last game. */
 export async function overruleCmd($: EngineInterface): Promise<string> {
   const game = await read($, terms)
@@ -142,6 +165,7 @@ export async function overruleCmd($: EngineInterface): Promise<string> {
   const at = await today($)
   await change($, l => dropGame(overrule(l, game.at, at), game.at))
   await refreshStatus($)
+  await writeReceipts($)
 
   return `${VOICE.yields}\nRuling #${target.id} is overruled. The receipt says so.`
 }
