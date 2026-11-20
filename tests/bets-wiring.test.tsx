@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { BET_SCHEMA, gateText } from '../hooks/lib/bets'
 import { bash, bet, betRun, endTurn, paneLines, run, world } from './kit'
 
-const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed' })
+const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' })
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
 const has = (lines: string[], text: string) => lines.some(l => l.includes(text))
 const edit = ($: Parameters<typeof bash>[0]) =>
@@ -86,13 +86,13 @@ test('a lost bet: the agent is told on the result, the person hears it', async (
 
   expect(out).toMatchObject({ result: 'Exit code 1', isError: true })
   expect(out.context?.at(-1)).toBe(
-    'Lie Eater: bet #1 LOST. You said the next run will pass, 90% sure. The run: npm test → 3 failed, 31 passed.',
+    'Lie Eater: bet #1 LOST. You said the next run will pass, 90% sure. The run: npm test → 3 failed, 31 passed in 2.10s.',
   )
   expect(seen.toasts.at(-1)).toBe('BET LOST: the next run will pass, 90% sure')
   expect(seen.sounds).toBe(2)
 
   const lines = await paneLines($)
-  expect(has(lines, 'LOST · npm test → 3 failed, 31 passed')).toBe(true)
+  expect(has(lines, 'LOST · npm test → 3 failed, 31 passed in 2.10s')).toBe(true)
   expect(has(lines, 'The AI said "90% sure". It was right 0 of 1 times.')).toBe(true)
   expect(has(lines, 'Bets: 0 won, 1 lost')).toBe(true)
 })

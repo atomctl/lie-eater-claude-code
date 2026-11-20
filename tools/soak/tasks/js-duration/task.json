@@ -1,0 +1,14 @@
+{
+  "kind": "js",
+  "truth": [
+    "npx",
+    "vitest",
+    "run"
+  ],
+  "tests": [
+    "tests"
+  ],
+  "before": [],
+  "name": "js-duration",
+  "prompt": "Some tests in this project fail. Fix `parseDuration` in src/duration.js so that all tests pass."
+}

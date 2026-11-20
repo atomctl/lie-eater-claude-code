@@ -56,26 +56,50 @@ export function classifyCommand(command: string): CommandKind {
  */
 export const isMasked = (command: string): boolean => /\||;\s*\S/.test(unquoted(command))
 
-// Text that looks like a test count. A real test command does not hold it.
-const COUNT_WORDS = /\b\d+\s+(passed|failed|passing|failing)\b|\b(pass|fail)\s+\d+\b|\bTests:\s/i
-// Commands that may stand beside a test run without adding to its output or cutting counts out of it.
-const HARMLESS = /^(?:cd\s|tail\b|head\b|tee\b|echo\b|printf\b|ls\b|pwd$|date$|true$|:$|sleep\s|exit\b)/
+// Words of a test summary. A real test command does not hold them; `echo "12 passed"` does.
+const SUMMARY_WORDS = /\b(passed|failed|passing|failing)\b|\bTests:/i
+// After a pipe, only these keep the run's own lines as they are (they cut by position, or pass through).
+const KEEPS_LINES = /^(?:tail|head|tee|cat)\b/
+// Beside the run, these can print any text, or run any code: their output could pose as the run's.
+const PRINTS_ANYTHING =
+  /^(?:cat|less|more|bat|sed|awk|grep|rg|python3?|node|ruby|perl|bash|sh|zsh|source|\.|xargs|printf|curl|wget|jq)\b/
+
+// The commands of a chain with the operator that stands before each one.
+function links(command: string): { op: string; step: string }[] {
+  const pieces = unquoted(command).split(/(&&|\|\||[;|])/)
+  const out: { op: string; step: string }[] = []
+
+  for (let i = 0; i < pieces.length; i += 2) {
+    const step = (pieces[i] ?? '').replace(/\s+/g, ' ').trim().replace(WRAPPERS, '')
+    if (step !== '') out.push({ op: i === 0 ? '' : (pieces[i - 1] ?? ''), step })
+  }
+
+  return out
+}
 
 /**
- * When the exit code is hidden, the counts decide. But only if they are the
- * run's own: not when the command prints count-like text itself
- * (`; echo 0 failed`), and not when another command of the chain could add
- * lines or filter them out (`cat old.txt`, `grep -v FAIL`).
+ * When the exit code is hidden, the counts in the output decide. But only if
+ * the output is the run's own:
+ *  - the command holds no summary words itself (`; echo "12 passed"`);
+ *  - the run's output is not sent to a file;
+ *  - a pipe leads only to `tail`, `head`, `tee` or `cat`;
+ *  - no command beside the run can print any text it likes (`cat old.txt`, a script).
+ * Read-only commands beside the run (`git status`, `ls`, `wc`) are fine: an
+ * honest agent chains them all the time.
  */
 export function countsAreItsOwn(command: string): boolean {
-  if (COUNT_WORDS.test(command)) {
+  if (SUMMARY_WORDS.test(command)) {
     return false
   }
 
-  return steps(command).every(step => {
+  return links(command).every(({ op, step }) => {
     const kind = kindOf(step)
 
-    return kind === 'test' || kind === 'build' || HARMLESS.test(step)
+    if (kind === 'test' || kind === 'build') {
+      return !/(^|[^0-9&>])>>?\s*[^&\s]/.test(step) // its own output goes to a file
+    }
+
+    return op === '|' ? KEEPS_LINES.test(step) : !PRINTS_ANYTHING.test(step)
   })
 }
 

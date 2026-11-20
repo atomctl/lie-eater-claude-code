@@ -14,53 +14,52 @@ const count = (text: string, pattern: RegExp): number => [...text.matchAll(patte
 const num = (found: RegExpMatchArray | null | undefined): number =>
   found?.[1] === undefined ? 0 : Number(found[1])
 
-const last = (text: string, pattern: RegExp): RegExpMatchArray | undefined =>
-  [...text.matchAll(pattern)].at(-1)
+type Counts = { passed: number; failed: number }
 
-export function parseCounts(output: string): { passed: number; failed: number } | undefined {
-  const cargo = output.match(/test result: \w+\. (\d+) passed; (\d+) failed/)
+// Every summary a runner printed, by the shape of that runner's own summary
+// line. A chained command (`git log`, `wc`) cannot look like one by accident.
+function summaries(output: string): Counts[] {
+  const found: Counts[] = []
+  const add = (passed: number, failed: number) => found.push({ passed, failed })
 
-  if (cargo) {
-    return { passed: Number(cargo[1]), failed: Number(cargo[2]) }
+  // pytest: "3 failed, 31 passed in 2.10s"
+  for (const m of output.matchAll(/(\d+ [a-z]+(?:, \d+ [a-z]+)*) in [\d.]+s/g)) {
+    const line = m[1] ?? ''
+    add(num(line.match(/(\d+) passed/)), num(line.match(/(\d+) failed/)) + num(line.match(/(\d+) errors?/)))
   }
-
-  const ran = output.match(/Ran (\d+) tests? in/)
-
-  if (ran) {
+  // jest and vitest: a line that starts with "Tests"
+  for (const m of output.matchAll(/^\s*Tests:?\s+(.*)$/gm)) {
+    add(num((m[1] ?? '').match(/(\d+) passed/)), num((m[1] ?? '').match(/(\d+) failed/)))
+  }
+  // cargo: "test result: FAILED. 31 passed; 3 failed"
+  for (const m of output.matchAll(/test result: \w+\. (\d+) passed; (\d+) failed/g)) add(Number(m[1]), Number(m[2]))
+  // unittest: "Ran 34 tests in 0.5s" then "FAILED (failures=3)" or "OK"
+  for (const m of output.matchAll(/Ran (\d+) tests? in/g)) {
     const bad = output.match(/FAILED \(([^)]*)\)/)?.[1] ?? ''
     const failed = num(bad.match(/failures=(\d+)/)) + num(bad.match(/errors=(\d+)/))
-
-    return { passed: Number(ran[1]) - failed, failed }
+    add(Number(m[1]) - failed, failed)
   }
-
   // mocha: the counts stand at the start of their own lines
-  const passing = output.match(/^\s*(\d+) passing\b/m)
-
-  if (passing) {
-    return { passed: Number(passing[1]), failed: num(output.match(/^\s*(\d+) failing\b/m)) }
-  }
-
-  const nodePass = output.match(/^ℹ pass (\d+)/m)
-
-  if (nodePass) {
-    return { passed: Number(nodePass[1]), failed: num(output.match(/^ℹ fail (\d+)/m)) }
-  }
-
-  // jest and vitest print a "Tests" line under a "Test Suites" / "Test Files"
-  // line; pytest prints its summary last.
-  const line = output.match(/^\s*Tests:?\s+.*$/m)?.[0] ?? output
-  const passed = last(line, /(\d+) passed/g)
-  const failed = last(line, /(\d+) failed/g)
-
-  if (passed || failed) {
-    return { passed: num(passed), failed: num(failed) }
-  }
-
+  for (const m of output.matchAll(/^\s*(\d+) passing\b/gm)) add(Number(m[1]), num(output.match(/^\s*(\d+) failing\b/m)))
+  // node --test: "ℹ pass 2" and "ℹ fail 0"
+  for (const m of output.matchAll(/^ℹ pass (\d+)/gm)) add(Number(m[1]), num(output.match(/^ℹ fail (\d+)/m)))
   // go test prints no counts: one `ok` line per passing package, `FAIL` lines for the rest
   const ok = count(output, /^ok\s+\S+/gm)
   const bad = count(output, /^(?:--- FAIL|FAIL)\b/gm)
+  if (ok + bad > 0) add(ok, bad)
 
-  return ok + bad === 0 ? undefined : { passed: ok, failed: bad }
+  return found
+}
+
+/** The pass and fail counts of a test run. Of several summaries, the worst counts. */
+export function parseCounts(output: string): Counts | undefined {
+  const found = summaries(output)
+
+  if (found.length === 0) {
+    return undefined
+  }
+
+  return { passed: Math.max(...found.map(c => c.passed)), failed: Math.max(...found.map(c => c.failed)) }
 }
 
 const TEST_FILE =

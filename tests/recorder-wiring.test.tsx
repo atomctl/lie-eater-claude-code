@@ -16,7 +16,7 @@ const PANE = {
 
 test('a failed test run shows in the pane, on every surface', async ($, on) => {
   mock.clock(on)
-  on('tool.call', () => ({ result: 'Exit code 1', isError: true, text: 'Exit code 1\n3 failed, 31 passed' }))
+  on('tool.call', () => ({ result: 'Exit code 1', isError: true, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' }))
 
   await $.tool.call({ tool: 'Bash', command: 'pytest' })
 

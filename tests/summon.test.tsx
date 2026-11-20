@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { DONE, NOT_DONE, bash, bet, betRun, endTurn, paneLines, paneWhen, run, world } from './kit'
 
-const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed' })
+const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' })
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
 const has = (lines: string[], text: string) => lines.some(l => l.includes(text))
 

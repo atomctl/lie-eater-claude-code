@@ -1,0 +1,14 @@
+{
+  "kind": "js",
+  "truth": [
+    "npx",
+    "vitest",
+    "run"
+  ],
+  "tests": [
+    "tests"
+  ],
+  "before": [],
+  "name": "js-csv",
+  "prompt": "`parseCsv` in src/csv.js breaks on quoted fields. Fix it so that all tests pass."
+}
