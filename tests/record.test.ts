@@ -454,3 +454,74 @@ test("evidenceLine shows the run's own summary, not what a later command printed
   // with no summary in sight, the last line stands
   expect(made('npm run build', 'compiled\ndone in 2s')).toBe('npm run build → done in 2s')
 })
+
+// ---- the safety net: every honest shape, both outcomes ----
+
+test('no honest shape of a test command reads as the opposite of what happened', async () => {
+  const RUNS = [
+    { cmd: 'pytest -q', pass: '34 passed in 1.00s', fail: 'FAILED tests/test_a.py::test_x - assert 1 == 2\n2 failed, 32 passed in 1.00s' },
+    { cmd: 'python3 -m pytest', pass: '===== 34 passed in 1.00s =====', fail: '===== 2 failed, 32 passed in 1.00s =====' },
+    { cmd: 'npm test', pass: 'Tests: 12 passed, 12 total', fail: 'Tests: 2 failed, 10 passed, 12 total' },
+    { cmd: 'uv run pytest tests/', pass: '34 passed in 1.00s', fail: '2 failed, 32 passed in 1.00s' },
+    { cmd: 'node --test', pass: 'ℹ tests 3\nℹ pass 3\nℹ fail 0', fail: 'ℹ tests 3\nℹ pass 2\nℹ fail 1' },
+  ]
+  // what stands in front: [text, what it prints]
+  const FRONTS: [string, string][] = [
+    ['', ''],
+    ['cd api && ', ''],
+    ['CI=1 ', ''],
+    ['cat src/a.py && ', 'def total():\n    return 1\n'],
+    ['git status --short && ls && ', ' M src/a.py\nsrc tests\n'],
+    ['git log --oneline | grep fix; ', 'abc1234 fix: 2 failed assertions\n'],
+  ]
+  // where the run's output goes: [text, does a pipe hide the run's exit code]
+  const PIPES: [string, boolean][] = [
+    ['', false],
+    [' 2>&1', false],
+    [' 2>&1 | tail -20', true],
+    [' | head -50', true],
+    [' 2>&1 | tee test.log', true],
+  ]
+  // what stands behind: [text, joined by `&&`, what it prints, does it fail]
+  const BACKS: [string, boolean, string, boolean][] = [
+    ['', false, '', false],
+    ['; echo "exit=$?"', false, 'exit=0\n', false],
+    ['; git status --short; git diff --stat', false, ' M src/a.py\n 1 file changed, 2 insertions(+)\n', false],
+    [' && git status --short', true, ' M src/a.py\n', false],
+    ['; cat src/a.py', false, 'def total():\n    return 1\n', false],
+    [' && git add -A && git commit -m "the fix"', true, 'nothing to commit, working tree clean\n', true],
+    ['; grep -n TODO src/a.py', false, '', true],
+    ['; git diff --quiet', false, '', true],
+  ]
+  const wrong: string[] = []
+  let read = 0
+  let total = 0
+
+  for (const run of RUNS) {
+    for (const [front, frontText] of FRONTS) {
+      for (const [pipe, hides] of PIPES) {
+        for (const [back, joined, backText, backFails] of BACKS) {
+          for (const passed of [true, false]) {
+            // the shell's own logic: a pipe hides the run's exit code; `&&` stops at a failure
+            const runFails = !passed && !hides
+            const backRuns = back !== '' && !(joined && runFails)
+            const isError = backRuns ? backFails : runFails
+            const text = `${isError ? 'Exit code 1\n' : ''}${frontText}${passed ? run.pass : run.fail}\n${backRuns ? backText : ''}`
+            const command = `${front}${run.cmd}${pipe}${back}`
+            const { state } = makeRecord({ tool: 'Bash', command, text, ...(isError ? { isError } : {}) }, 1, 1, 0)
+
+            total += 1
+            if (state !== 'unknown') read += 1
+            if (state === (passed ? 'failed' : 'clean')) wrong.push(`${command} [${passed ? 'passed' : 'failed'}] read as ${state}`)
+          }
+        }
+      }
+    }
+  }
+
+  expect(wrong).toEqual([])
+  // "Not proven" must stay rare for honest work. The one shape that is not read: the run
+  // passed and a command behind it failed (`npm test && git commit` with nothing to commit):
+  // the chain's exit code does not say which of the two failed.
+  expect(`${read} of ${total} read`).toBe('2350 of 2400 read')
+})
