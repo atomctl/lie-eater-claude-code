@@ -15,7 +15,7 @@ export type Receipt = {
   terms: { verdict: string; lockedAt: string; lines: string[] }
   rulings: Ruling[]
   bets: Bet[]
-  score: ReturnType<typeof score> | null
+  score: NonNullable<ReturnType<typeof score>> | null
   unbet: number
   repository: { line: string | null; openDebt: number }
 }
