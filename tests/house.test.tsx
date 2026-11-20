@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DONE, bet, betRun, endTurn, paneLines, paneWhen, run, world } from './kit'
+import { DONE, bash, bet, betRun, endTurn, paneLines, paneWhen, run, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' })
 const passing = () => ({ result: {}, text: '34 passed in 1s' })
@@ -246,4 +246,37 @@ test('a game that ended with the rules kept has nothing to overrule', async ($, 
   expect((await run($, 'overrule')).text).toBe('No ruling to overrule.')
   expect(ledgerOf(seen).games).toHaveLength(1)
   expect(has(await paneLines($), 'Clean games in a row: 1')).toBe(true)
+})
+
+// ---- from soak round 1 ----
+
+test('a game in which nothing was played leaves no debt', async ($, on) => {
+  const seen = world(on)
+  on('tool.call', passing)
+
+  await run($, 'summon', 'npm test')
+  await $.tool.call({ tool: 'Read', file_path: 'src/a.ts' })
+  const out = await run($, 'rule')
+
+  expect(out.text).toContain('✗ The tests were never run')
+  expect(out.text).toContain('VERDICT: RULES BROKEN.')
+  expect(out.text).not.toContain('Debt')
+  expect(seen.status.at(-1)).not.toMatch(/debt/)
+  expect(has(await paneLines($), 'Clean games in a row')).toBe(false)
+})
+
+test('the house does not collect for tests that failed before the game', async ($, on) => {
+  const seen = world(on)
+  on('tool.call', (_, e) => (e.tool === 'Bash' ? failing() : passing()))
+
+  await bash($, 'npm test')
+  await run($, 'summon', 'npm test')
+  await $.tool.call({ tool: 'Edit', file_path: 'src/feature.ts', old_string: 'a', new_string: 'b' })
+  await betRun($, 'npm test', 'fail')
+  const out = await run($, 'rule')
+
+  expect(out.text).toContain('✗ The tests still fail, as they did before the game')
+  expect(out.text).not.toContain('Debt')
+  expect(ledgerOf(seen).debt).toEqual([])
+  expect(ledgerOf(seen).games).toEqual([])
 })

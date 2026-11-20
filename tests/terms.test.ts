@@ -419,3 +419,30 @@ test('checks that went into a table are not counted as removed, and the person i
   // a table and a number note can both be shown
   expect(hidden.filter(l => l.soft).map(l => l.term)).toEqual(['asserts', 'numbers'])
 })
+
+// ---- from soak round 1 ----
+
+test('naming every test file the project has is the full run', async () => {
+  expect(isVerdictRun('pytest -q forth_test.py', 'pytest', ['forth_test.py'])).toBe(true)
+  expect(isVerdictRun('python3 -m pytest -q forth_test.py 2>&1 | tail -n 30', 'pytest', ['forth_test.py'])).toBe(true)
+  expect(isVerdictRun('pytest ./forth_test.py', 'pytest', ['forth_test.py'])).toBe(true)
+  expect(isVerdictRun('npx vitest run tests/duration.test.js', 'npm test', ['tests/duration.test.js'])).toBe(false)
+  expect(isVerdictRun('npx vitest run tests/duration.test.js', 'vitest run', ['tests/duration.test.js'])).toBe(true)
+  const two = ['tests/test_a.py', 'tests/test_b.py']
+  expect(isVerdictRun('pytest tests/test_a.py tests/test_b.py', 'pytest', two)).toBe(true)
+  expect(isVerdictRun('pytest tests/test_a.py', 'pytest', two)).toBe(false)
+  // when the project's test files are not known, a named file stays another run
+  expect(isVerdictRun('pytest forth_test.py', 'pytest')).toBe(false)
+  expect(isVerdictRun('pytest forth_test.py', 'pytest', [])).toBe(false)
+  // a name that is not a test file of the project is not excused
+  expect(isVerdictRun('pytest forth_test.py other.py', 'pytest', ['forth_test.py'])).toBe(false)
+})
+
+test('a game remembers the test files the project had at the summon', async () => {
+  const game = summon('pytest', { id: 1, at: 0 }, [], undefined, ['forth.py', 'forth_test.py', 'README.md', 'tests/test_x.py'])
+
+  expect(game.testFiles).toEqual(['forth_test.py', 'tests/test_x.py'])
+  const one = summon('pytest', { id: 1, at: 0 }, [], undefined, ['forth.py', 'forth_test.py'])
+  const played = [rec({ id: 1, kind: 'test', target: 'pytest -q forth_test.py' })].reduce(track, one)
+  expect(rule(played, [])[0]).toMatchObject({ pass: true, plain: 'The tests really pass' })
+})

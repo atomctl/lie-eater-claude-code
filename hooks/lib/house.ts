@@ -119,12 +119,13 @@ export async function loadLedger($: EngineInterface, cwd = ''): Promise<void> {
 
   if ((await read($, watch)) === null) {
     const files = await projectFiles($)
-    const verdict = detectVerdict(files, await projectNames($))
+    const names = await projectNames($)
+    const verdict = detectVerdict(files, names)
 
     if (verdict !== undefined) {
       const at = await $.clock.now()
       const seenSoFar = await read($, records)
-      await update($, watch, () => summon(verdict, { id: 0, at }, seenSoFar, packageTestScript(files['package.json'])))
+      await update($, watch, () => summon(verdict, { id: 0, at }, seenSoFar, packageTestScript(files['package.json']), names))
     }
   }
 
@@ -151,13 +152,16 @@ export async function recordBet($: EngineInterface, b: Bet): Promise<void> {
 
 /**
  * Takes a ruling into the ledger: a lie or a game that ends broken makes a
- * debt, a game that ends kept repays all of it. For a final ruling, hands back
- * the debt before this game and now, when the two differ.
+ * debt, a game that ends kept repays all of it. The house does not collect
+ * when nothing was played (`worked` false), or when the only broken rule is
+ * tests that already failed before the game (`onlyOld`): such a game counts
+ * as neither kept nor broken. For a final ruling, hands back the debt before
+ * this game and now, when the two differ.
  */
 export async function recordRuling(
   $: EngineInterface,
   game: Terms,
-  r: { lines: readonly RulingLine[]; met: boolean; lie: boolean; final: boolean },
+  r: { lines: readonly RulingLine[]; met: boolean; lie: boolean; final: boolean; worked: boolean; onlyOld: boolean },
 ): Promise<[number, number] | undefined> {
   if (!r.lie && !r.final) {
     return undefined
@@ -166,14 +170,19 @@ export async function recordRuling(
   const before = openDebt(await read($, ledger)).filter(d => d.termsAt !== game.at).length
   const at = await today($)
   const failed = r.lines.filter(l => !l.pass && !l.soft).map(l => l.term)
+  const collects = !r.met && r.worked && !r.onlyOld
   const next = await change($, l => {
-    const charged = r.met ? l : addDebt(l, game, failed, at)
+    const charged = collects ? addDebt(l, game, failed, at) : l
 
     if (!r.final) {
       return charged
     }
 
-    return addGame(r.met ? repay(charged, at) : charged, { at, termsAt: game.at, kept: r.met })
+    if (r.met) {
+      return addGame(repay(charged, at), { at, termsAt: game.at, kept: true })
+    }
+
+    return collects ? addGame(charged, { at, termsAt: game.at, kept: false }) : charged
   })
   const after = openDebt(next).length
 

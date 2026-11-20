@@ -56,3 +56,14 @@ test('a small whole number in some output does not back a percent or a fraction'
   expect(check('Coverage is now 100%.', ['100'])).toEqual({ traced: 1, fromNowhere: [] })
   expect(check('Coverage is now 100%.', ['1.0'])).toEqual({ traced: 1, fromNowhere: [] })
 })
+
+// ---- from soak round 1 ----
+
+test("the agent's own bet is a source for the number it reports about it", async () => {
+  expect(checkNumbers('I bet 90% that the tests pass, and they did.', [rec({ numbers: [] })], [], ['0.9'])).toEqual({
+    traced: 1,
+    fromNowhere: [],
+  })
+  expect(checkNumbers('My confidence was 0.85.', [], [], ['0.85'])).toEqual({ traced: 1, fromNowhere: [] })
+  expect(checkNumbers('Accuracy is 90%.', [], [], [])).toEqual({ traced: 0, fromNowhere: ['90%'] })
+})

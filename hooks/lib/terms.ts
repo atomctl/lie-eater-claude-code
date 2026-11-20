@@ -86,19 +86,29 @@ function shape(command: string): Shape {
  * that hides the exit code, the record's state comes from the counts (see
  * makeRecord).
  */
-export function isVerdictRun(command: string, verdict: string): boolean {
+export function isVerdictRun(command: string, verdict: string, known: readonly string[] = []): boolean {
   const asked = shape(chain(verdict)[0] ?? '')
 
   if (asked.words.length === 0) {
     return false
   }
 
+  const plain = (path: string): string => path.replace(/^\.\//, '')
+  // `pytest forth_test.py` in a folder whose only test file is forth_test.py
+  // runs everything: naming every test file the project has is no narrowing.
+  const namesThemAll = (extra: readonly string[]): boolean =>
+    known.length > 0 &&
+    extra.every(word => known.includes(plain(word))) &&
+    known.every(file => extra.some(word => plain(word) === file))
+
   return chain(command).some(part => {
     const ran = shape(part)
+    const startsAlike = asked.words.every((word, i) => ran.words[i] === word)
+    const extra = ran.words.slice(asked.words.length)
 
     return (
-      ran.words.length === asked.words.length &&
-      ran.words.every((word, i) => word === asked.words[i]) &&
+      startsAlike &&
+      (extra.length === 0 || namesThemAll(extra)) &&
       ran.narrows.every(narrow => asked.narrows.includes(narrow))
     )
   })
@@ -136,6 +146,9 @@ export function detectVerdict(
   return undefined
 }
 
+// The endings of files that hold tests.
+const TEST_SOURCE = /\.(py|[cm]?[jt]sx?|go|rb|java|rs|php|cs|kt|swift)$/
+
 const isCodeEdit = (r: ToolRecord): boolean =>
   (r.kind === 'edit' || r.kind === 'write') && r.state !== 'failed' && isCodeFile(r.target)
 const isGatedRun = (r: ToolRecord): boolean => r.kind === 'test' || r.kind === 'build'
@@ -145,14 +158,17 @@ const newest = (records: readonly ToolRecord[], is: (r: ToolRecord) => boolean):
 /**
  * Locks a game. `script` is the project's package.json test script: when the
  * verdict is `npm test`, running that script's test command directly
- * (`npx vitest run`) is the same run.
+ * (`npx vitest run`) is the same run. `names` are the file names of the
+ * project's folder and its test folders, as they are at the summon.
  */
 export function summon(
   verdict: string,
   ctx: { id: number; at: number },
   records: readonly ToolRecord[],
   script?: string,
+  names: readonly string[] = [],
 ): Terms {
+  const testFiles = names.filter(name => isTestFile(name) && TEST_SOURCE.test(name))
   const lastTest = newest(records, r => r.kind === 'test')
   const startFailed = lastTest?.state === 'failed' ? lastTest.counts?.failed : undefined
   const viaPackage = /^(npm|pnpm|yarn|bun) test$/.test(bareCommand(verdict))
@@ -163,6 +179,7 @@ export function summon(
     at: ctx.at,
     verdict: tidy(verdict),
     ...(also === undefined ? {} : { also }),
+    ...(testFiles.length === 0 ? {} : { testFiles }),
     startRecord: records.at(-1)?.id ?? 0,
     state: 'in play',
     ...(startFailed === undefined ? {} : { startFailed }),
@@ -176,10 +193,9 @@ export function summon(
 }
 
 const isTheVerdict = (t: Terms, command: string): boolean =>
-  isVerdictRun(command, t.verdict) || (t.also !== undefined && isVerdictRun(command, t.also))
+  isVerdictRun(command, t.verdict, t.testFiles) || (t.also !== undefined && isVerdictRun(command, t.also, t.testFiles))
 
 const NO_NET: FileNet = { asserts: 0, tests: 0, skips: 0, tables: 0, removed: [] }
-const TEST_SOURCE = /\.(py|[cm]?[jt]sx?|go|rb|java|rs|php|cs|kt|swift)$/
 const TEST_FOLDER = /(^|\/)(tests?|__tests__|spec)$/
 
 // What an `rm` takes away from the tests: a test file, or a whole test folder.

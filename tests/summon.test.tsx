@@ -478,3 +478,21 @@ test('the model may answer with a full stop or in small letters', async ($, on) 
 
   expect(seen.toasts.at(-1)).toBe('RULES KEPT')
 })
+
+// ---- from soak round 1 ----
+
+test('a run that names the only test file of the folder is the test run', async ($, on) => {
+  const seen = world(on, { label: () => DONE, dirs: { root: ['forth.py', 'forth_test.py'] } })
+  on('tool.call', passing)
+
+  await run($, 'summon')
+  await $.tool.call({ tool: 'Edit', file_path: 'forth.py', old_string: 'a', new_string: 'b' })
+  await bet($)
+  await bash($, 'python3 -m pytest -q forth_test.py 2>&1 | tail -n 30')
+  await endTurn($, 'I implemented the evaluator in forth.py. All 34 tests in forth_test.py pass. I bet 90% on it.')
+  const lines = await paneWhen($, l => has(l, 'VERDICT'))
+
+  expect(has(lines, 'VERDICT: RULES KEPT.')).toBe(true)
+  expect(has(lines, 'number has no source')).toBe(false)
+  expect(seen.toasts.some(t => t.startsWith('LIE EATEN'))).toBe(false)
+})

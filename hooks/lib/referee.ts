@@ -19,6 +19,7 @@ export const PANE = 'lie-eater'
 const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
 const terms = atom({ plugin: 'lie-eater', key: 'terms' } as const, null, { shape: SHAPE.terms })
 const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { shape: SHAPE.rulings })
+const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SHAPE.bets })
 const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
 
 const RULINGS_KEPT = 50
@@ -43,6 +44,8 @@ const SENT_BACK_ENOUGH =
   'The referee has sent the AI back 3 times. Read /explain, or type /overrule if a rule is wrong for this task.'
 const NO_GAME = 'No game has been ruled yet. Type /summon before you give the AI a task.'
 
+const onlyOldFailures = (lines: readonly Ruling['lines'][number][]): boolean =>
+  lines.filter(l => !l.pass && !l.soft).every(isOldFailure)
 const inPlay = (t: Terms | null): t is Terms => t !== null && t.state === 'in play'
 const brokenRules = (r: Pick<Ruling, 'lines'>): number => r.lines.filter(l => !l.pass && !l.soft).length
 
@@ -116,14 +119,21 @@ export async function summonCmd($: EngineInterface, args: string): Promise<strin
 
   const list = await read($, records)
   const files = await projectFiles($)
-  const verdict = asked !== '' ? asked : (verdictFromRecord(list) ?? detectVerdict(files, await projectNames($)))
+  const names = await projectNames($)
+  const verdict = asked !== '' ? asked : (verdictFromRecord(list) ?? detectVerdict(files, names))
 
   if (verdict === undefined) {
     return NO_TESTS
   }
 
   const { termsSeq } = await read($, meta)
-  const game = summon(verdict, { id: termsSeq + 1, at: await $.clock.now() }, list, packageTestScript(files['package.json']))
+  const game = summon(
+    verdict,
+    { id: termsSeq + 1, at: await $.clock.now() },
+    list,
+    packageTestScript(files['package.json']),
+    names,
+  )
   await update($, terms, () => game)
   await update($, meta, m => ({ ...m, termsSeq: game.id, note: undefined }))
   // With no surface to draw on (a headless run) the game still starts.
@@ -169,7 +179,9 @@ export async function ruleTurn($: EngineInterface, answer: string): Promise<void
   }
 
   const { promptNumbers, turn } = await read($, meta)
-  const { fromNowhere } = checkNumbers(answer, await read($, records), promptNumbers)
+  // The agent may report its own bet ("90% sure"): that number has a source.
+  const ownBets = (await read($, bets)).map(b => String(b.confidence))
+  const { fromNowhere } = checkNumbers(answer, await read($, records), promptNumbers, ownBets)
   const lines = rule(game, fromNowhere)
   const met = isKept(lines)
   // "Done" can only be a lie about work: with no edit and no run since the
@@ -188,9 +200,9 @@ export async function ruleTurn($: EngineInterface, answer: string): Promise<void
   const final = done === true && met
   // Tests that failed before the game and still fail are a broken rule, but
   // "done" with them is not a lie: the agent hid nothing.
-  const onlyOldFailures = lines.filter(l => !l.pass && !l.soft).every(isOldFailure)
-  const lie = done === true && !met && !onlyOldFailures
-  const debt = await recordRuling($, game, { lines, met, lie, final })
+  const onlyOld = onlyOldFailures(lines)
+  const lie = done === true && !met && !onlyOld
+  const debt = await recordRuling($, game, { lines, met, lie, final, worked, onlyOld })
   const ruling = await addRuling($, {
     termsId: game.id,
     lines,
@@ -232,7 +244,8 @@ export async function ruleNow($: EngineInterface): Promise<string> {
   const fromNowhere = latestRuling(await read($, rulings), game.id)?.fromNowhere ?? []
   const lines = rule(game, fromNowhere)
   const met = isKept(lines)
-  const debt = await recordRuling($, game, { lines, met, lie: false, final: true })
+  const worked = game.lastCodeEdit > game.startRecord || game.lastGatedRun > game.startRecord
+  const debt = await recordRuling($, game, { lines, met, lie: false, final: true, worked, onlyOld: onlyOldFailures(lines) })
   const shown = debt === undefined ? {} : { debt }
   await addRuling($, { termsId: game.id, lines, met, fromNowhere, saidDone: null, final: true, lie: false, ...shown })
   await endGame($, game, met ? 'met' : 'ended')

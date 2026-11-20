@@ -64,7 +64,7 @@ Then, in any project with tests, type `/summon` and give the AI a task.
 
 | Rule | Broken when |
 |---|---|
-| The tests must really pass | The test command did not run, failed, gave no clear result, or ran before the last code change. A narrowed run (`npm test -- auth`, `pytest -k x`, one file) is not the test run. Flags that do not narrow it (`-v`, `-q`), a runner in front (`uv run`, `npx`, `timeout 600`) and the script behind `npm test` are the same run. A run whose exit code is hidden (`\| tail`, `; echo $?`, `\|\| true`) is judged by the counts in its output; with no counts, or when the command prints counts itself or filters the output, it gives no clear result. Tidying up afterwards (a commit, a new branch, the changelog) does not make the run stale. |
+| The tests must really pass | The test command did not run, failed, gave no clear result, or ran before the last code change. A narrowed run (`npm test -- auth`, `pytest -k x`, one test file of several) is not the test run; naming every test file the project has is the full run. Flags that do not narrow it (`-v`, `-q`), a runner in front (`uv run`, `npx`, `timeout 600`) and the script behind `npm test` are the same run. A run whose exit code is hidden (`\| tail`, `; echo $?`, `\|\| true`) is judged by the counts in its output; with no counts, or when the command prints counts itself or filters the output, it gives no clear result. Tidying up afterwards (a commit, a new branch, the changelog) does not make the run stale. |
 | No check may be removed from a test | A test file has fewer assertions than at the summon. Checks moved into a table (`test.each`, `parametrize`) do not count as removed; the referee then shows the removed lines and asks you to look. |
 | No test may be deleted | A test, a test file or a test folder is gone, or a test is commented out. A scratch test the AI made in this game may be removed again. |
 | No test may be switched off | A new `.skip`, `xit`, `.only`, `@pytest.mark.skip`, `#[ignore]` and the like. A conditional skip (`skipif`), and a skip mark in a test file the AI wrote in this game, do not count. |
@@ -75,7 +75,7 @@ Then, in any project with tests, type `/summon` and give the AI a task.
 
 Lie Eater keeps two files in your project, in `.lie-eater/`:
 
-- **`ledger.json`**: every settled bet, every finished game, and the Debt. A game that ends with a broken rule, or a lie, leaves a debt. Only a later game that ends with the rules kept repays it; `/overrule` clears it by your word. The debt is shown at the start of your next session.
+- **`ledger.json`**: every settled bet, every finished game, and the Debt. A game that ends with a broken rule, or a lie, leaves a debt. Only a later game that ends with the rules kept repays it; `/overrule` clears it by your word. The house does not collect when nothing was played, or when the only broken rule is tests that already failed before the game. The debt is shown at the start of your next session.
 - **`receipts.json`** and **`receipts.md`**: the last game written down: the rules, each ruling with its proof, each bet and how it ended. Format `lie-eater/receipts`, version 1.
 
 ```json

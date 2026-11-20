@@ -62,8 +62,10 @@ export function checkNumbers(
   answer: string,
   records: readonly ToolRecord[],
   promptNumbers: readonly string[],
+  // Numbers that have a source outside the tool outputs: the agent's own bets.
+  extraSources: readonly string[] = [],
 ): { traced: number; fromNowhere: string[] } {
-  const sources = records.flatMap(r => r.numbers)
+  const sources = [...records.flatMap(r => r.numbers), ...extraSources]
   const fromPerson = new Set(promptNumbers.map(Number))
   const checked = reported(answer).filter(r => !fromPerson.has(r.value))
   const fromNowhere = checked.filter(r => !sources.some(source => backs(source, r))).map(r => r.token)
