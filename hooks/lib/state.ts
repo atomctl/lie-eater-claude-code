@@ -21,9 +21,10 @@ export const NOTHING_FROZEN: Frozen = { files: {}, unread: [] }
 export const SHAPE = {
   records: 'records-3',
   watch: 'watch-5',
-  rulings: 'rulings-4',
+  rulings: 'rulings-5',
   frozen: 'frozen-2',
   parked: 'parked-2',
+  closing: 'closing-1',
   bets: 'bets-1',
   ledger: 'ledger-2',
   meta: 'meta-3',

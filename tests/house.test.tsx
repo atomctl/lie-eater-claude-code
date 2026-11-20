@@ -92,7 +92,7 @@ test('a ledger file that cannot be read is kept aside, not overwritten', async (
   expect(ledgerOf(seen).bets).toHaveLength(1)
 })
 
-test('each done call writes the receipts (version 3) and the card', async ($, on) => {
+test('each done call writes the receipts (version 4) and the card', async ($, on) => {
   const opts = project()
   const seen = world(on, opts)
   on('tool.call', passing)
@@ -101,17 +101,20 @@ test('each done call writes the receipts (version 3) and the card', async ($, on
   expect(writtenAt(seen, '.lie-eater/receipts.json')).toBeUndefined()
   await editCode($)
   await done($)
-  expect(receiptOf(seen)).toMatchObject({ format: 'lie-eater/receipts', version: 3, check: { command: 'npm test' } })
+  expect(receiptOf(seen)).toMatchObject({ format: 'lie-eater/receipts', version: 4, check: { command: 'npm test' } })
   expect(receiptOf(seen).results.map((r: { result: string }) => r.result)).toEqual(['unchecked'])
 
   await betRun($, 'npm test')
   await done($)
   expect(receiptOf(seen).results.map((r: { result: string }) => r.result)).toEqual(['unchecked', 'checked'])
+  // a green result keeps which kind of green it was; another result has no such field
+  expect(receiptOf(seen).results.map((r: { added?: string[] }) => r.added)).toEqual([undefined, []])
   expect(receiptOf(seen).bets).toHaveLength(1)
   expect(writtenAt(seen, '.lie-eater/receipts.md')?.startsWith('# Lie Eater receipts')).toBe(true)
   const card = writtenAt(seen, '.lie-eater/card.svg') ?? ''
   expect(card.startsWith('<svg')).toBe(true)
   expect(card).toContain('✓ checked')
+  expect(card).toContain('The AI added no new check for this change.')
 })
 
 test('an accepted change is written into the receipts', async ($, on) => {

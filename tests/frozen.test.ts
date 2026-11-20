@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { classify, decidesHowChecksRun, hash, isFrozen, keep } from '../hooks/lib/frozen'
+import { classify, decidesHowChecksRun, hash, isFrozen, keep, newChecks } from '../hooks/lib/frozen'
 import type { Kept } from '../types'
 
 const T = 'tests/test_cart.py'
@@ -202,4 +202,13 @@ test('setup files of the runners decide how the checks run too', async () => {
   for (const path of ['jest.setup.js', 'vitest.setup.ts', 'src/setupTests.ts', 'babel.config.js', '.babelrc', '.nycrc', '.nycrc.json', '.coveragerc']) {
     expect(`${path}: ${decidesHowChecksRun(path)}`).toBe(`${path}: true`)
   }
+})
+
+test('new check files: test-named files and files in a test folder that are not in the frozen set; never a file that decides how checks run', async () => {
+  const was = { files: { 'tests/test_cart.py': { text: 'x' }, 'pyproject.toml': { text: '' } }, unread: ['tests/big.py'] }
+  const names = ['cart.py', 'tests/test_cart.py', 'tests/big.py', 'tests/test_tax.py', 'tests/helpers.py', 'src/b.test.ts', 'tests/conftest.py', 'pyproject.toml', 'notes.md']
+
+  // sorted, so that "the first" is always the same file; a helper in a test folder counts
+  expect(newChecks(was, names)).toEqual(['src/b.test.ts', 'tests/helpers.py', 'tests/test_tax.py'])
+  expect(newChecks(was, ['cart.py', 'tests/test_cart.py'])).toEqual([])
 })

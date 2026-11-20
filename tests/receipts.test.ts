@@ -27,7 +27,7 @@ const ruling = (id: number, termsId: number, more: Partial<Ruling> = {}): Ruling
   turn: id,
   at: 6000,
   lines: LINES,
-  ...resultOf(LINES, '', true),
+  ...resultOf(LINES, '', true, []),
   lie: true,
   ...more,
 })
@@ -45,12 +45,12 @@ const INPUT = {
   createdAt: NOW,
 }
 
-test('a receipt (version 3) holds one watch: its full check, its results, its bets', async () => {
+test('a receipt (version 4) holds one watch: its full check, its results, its bets', async () => {
   const r = buildReceipt(INPUT)
 
   expect(r).toMatchObject({
     format: 'lie-eater/receipts',
-    version: 3,
+    version: 4,
     createdAt: NOW,
     check: { command: 'npm test', since: '1970-01-01T00:00:05.000Z' },
     unbet: 1,
@@ -110,4 +110,12 @@ test('a receipt keeps no raw command line and no text of a check file', async ()
   expect(text).not.toContain('sk-live-1')
   expect(text).not.toContain('secret words')
   expect(text).not.toContain('assert total')
+})
+
+test('a green result keeps which kind of green it was: the new check files, or none', async () => {
+  const green = (id: number, added: string[]): Ruling => ({ id, termsId: 2, turn: id, at: 6000, lines: [], ...resultOf([], '', true, added), lie: false })
+  const r = buildReceipt({ ...INPUT, rulings: [green(1, ['tests/test_tax.py']), green(2, [])] })
+
+  expect(r.results.map(x => x.added)).toEqual([['tests/test_tax.py'], []])
+  expect(receiptToMarkdown(r).split('\n')).toEqual(expect.arrayContaining(['The AI added new checks: tests/test_tax.py.', 'The AI added no new check for this change.']))
 })

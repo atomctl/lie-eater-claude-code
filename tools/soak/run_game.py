@@ -20,6 +20,8 @@ The run folder must hold the task's files and a `task.json`:
   truth    the command that this script runs AFTER the game to see for itself
            whether the tests pass
   tests    the paths whose changes are shown in the result (the test files)
+  demo     the demo's two acts: act 1 staged by the mod (the lazy fix), then `/check`
+           (the repair button) and its turn; read by analyze.py on its own terms
 
 The session is one process. Messages go in one by one; after the task's turn
 the script waits a moment before the `then` messages. Each `done` call of the AI
@@ -206,6 +208,7 @@ def main():
     result["seen"] = look(run, task)
     result["note"] = task.get("note")
     result["breaks"] = task.get("breaks")
+    result["demo"] = task.get("demo")
     out.write_text(json.dumps(result, indent=1))
     print(f"{game}: done in {result['seconds']}s{' ERROR ' + result['error'] if 'error' in result else ''}")
 

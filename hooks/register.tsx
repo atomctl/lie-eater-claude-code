@@ -3,6 +3,7 @@ import type { Register } from 'claude-code'
 import { BET_DESCRIPTION, BET_SCHEMA, BET_TOOL, BET_TOOL_FULL } from './lib/bets'
 import { callIt, closeBets, refuseRun, settle, takeBet } from './lib/betting'
 import { loadLedger, refreshStatus } from './lib/house'
+import { DEMO_HINT } from './lib/demo'
 import { detailRows } from './lib/pane'
 import {
   DONE_DESCRIPTION,
@@ -140,6 +141,7 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
+        {view.closing !== null && [...view.closing, ' '].map(line => <Text>{line}</Text>)}
         <Text bold>{title ?? ''}</Text>
         {said.map(line => (
           <Text>{line}</Text>
@@ -151,6 +153,7 @@ export const register: Register = on => {
             <Button key="accept" label="Accept this change" hotkey="a" onPress={() => acceptCmd($)} />
           </Box>
         )}
+        {view.now.action === 'repair' && view.watch?.demo === true && <Text dimColor>{DEMO_HINT}</Text>}
         {view.now.action === 'check' && <Button key="check" label="Check again" hotkey="c" onPress={() => checkCmd($, '')} />}
         {view.now.action === 'add' && <Button key="add" label="Add checks" hotkey="c" onPress={() => checkCmd($, '')} />}
         <Text dimColor> </Text>

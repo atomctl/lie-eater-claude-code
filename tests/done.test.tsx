@@ -140,7 +140,7 @@ test('a whole session makes no model call', async ($, on) => {
   await endTurn($, 'Fixed. All 34 tests pass.')
   await done($)
 
-  expect(seen.status.at(-1)).toBe('Lie Eater ✓ checked')
+  expect(seen.status.at(-1)).toBe('Lie Eater ✓ checked · no new check')
   expect(seen.classified).toBe(0)
 })
 
@@ -183,11 +183,7 @@ test('/lie-eater demo: a whole check in a throwaway folder, with nothing kept in
   const out = await run($, 'lie-eater', 'demo')
   await seen.tick()
 
-  expect(out.text?.split('\n')).toEqual([
-    'This is a demo in .lie-eater/demo: a tiny project with one failing check.',
-    'The AI fixes it and says "done". Lie Eater checks the proof: watch the line under the prompt.',
-    'You can delete .lie-eater/demo afterwards.',
-  ])
+  expect(out.text?.split('\n')[0]).toBe('This is a demo in .lie-eater/demo: a tiny project with one bug and one failing check. You can delete it afterwards.')
   expect(written('.lie-eater/demo/price.mjs')).toContain('export function orderPrice')
   expect(written('.lie-eater/demo/price.test.mjs')).toContain("from 'node:test'")
   expect(seen.prompts).toHaveLength(1)
@@ -228,7 +224,7 @@ test('a green demo in a folder with no checks of its own stays on the demo', asy
   await betRun($, 'node --test')
   await done($)
 
-  expect(seen.status.at(-1)).toBe('Lie Eater ✓ checked')
+  expect(seen.status.at(-1)).toBe('Lie Eater ✓ checked · no new check')
 })
 
 test('/lie-eater demo: the demo test file is frozen too', async ($, on) => {

@@ -4,7 +4,9 @@ import type { Result, Ruling, RulingLine } from '../../types'
 import { isKept, isLie, namesBreach } from './terms'
 import { isChangedAfter, isElsewhere, isExtra, isFailingRun, isNoFoul, isNoRun, isNotAlone, isNotWhole, isOldFailure } from './words'
 
-const CHECKED = ['✓ checked', 'The checks passed after the last change.', 'No existing check file was changed.']
+const CHECKED = '✓ checked'
+const PASSED = 'The checks passed after the last change. No existing check file was changed.'
+const NO_NEW_CHECK = 'The AI added no new check for this change.'
 const DISTRUST = '✗ don\'t trust "done"'
 const UNCHECKED = '? not checked'
 const NOT_RUN = 'The full check was not run after the last change.'
@@ -48,18 +50,28 @@ function reasonLine(l: RulingLine): string {
 // The person's order of what to name first: the worst first, a failing run last.
 const FIRST: readonly RulingLine['term'][] = ['config', 'gone', 'changed', 'only', 'verdict']
 
+// The third green line: whether the AI added a check file for its work.
+const addedLine = (added: readonly string[]): string =>
+  added[0] === undefined ? NO_NEW_CHECK : `The AI added new checks: ${added[0]}${andMore(added.length - 1)}`
+
 /**
  * The one place that decides what the person is shown after a `done` call.
- * All kept: checked. A changed check
+ * All kept: checked, with whether new check files were added (`added`: see
+ * frozen.ts `newChecks`; it says nothing on any other result). A changed check
  * file, or a failing run: don't trust "done", with whether the AI said so
  * (`named`) or hid a changed check (`isLie`; nothing more for a plain failing run).
  * Anything else (no full run for the files as they are, a run in a chain or
  * with extra options, an unread run, checks that already failed): not
  * checked. Never an accusation.
  */
-export function resultOf(lines: readonly RulingLine[], named: string, worked: boolean): { result: Result; screen: string[] } {
+export function resultOf(
+  lines: readonly RulingLine[],
+  named: string,
+  worked: boolean,
+  added: readonly string[],
+): { result: Result; screen: string[]; added?: string[] } {
   if (isKept(lines)) {
-    return { result: 'checked', screen: [...CHECKED] }
+    return { result: 'checked', screen: [CHECKED, PASSED, addedLine(added)], added: [...added] }
   }
 
   const open = lines.filter(l => !l.pass)
@@ -85,14 +97,14 @@ export type Now = { status: string; screen: string[]; action?: 'repair' | 'check
  * watch is armed, the newest result of that watch, and whether anything
  * changed since the watch was armed (or armed again: see terms.ts `hasChanged`).
  */
-export function nowOf(view: { armed: boolean; changed: boolean; last?: Pick<Ruling, 'result' | 'screen' | 'accepted'> }): Now {
+export function nowOf(view: { armed: boolean; changed: boolean; last?: Pick<Ruling, 'result' | 'screen' | 'accepted' | 'added'> }): Now {
   const last = view.last?.accepted === true ? undefined : view.last
 
   if (!view.armed) return { status: 'Lie Eater ? no checks yet', screen: [UNCHECKED, NO_CHECKS], action: 'add' }
   if (last?.result === 'distrust') return { status: `Lie Eater ${DISTRUST}`, screen: last.screen, action: 'repair' }
   if (last?.result === 'unchecked') return { status: `Lie Eater ${UNCHECKED}`, screen: last.screen, action: 'check' }
   if (view.changed) return { status: `Lie Eater ${UNCHECKED}`, screen: [UNCHECKED, NOT_RUN], action: 'check' }
-  if (last?.result === 'checked') return { status: 'Lie Eater ✓ checked', screen: last.screen }
+  if (last?.result === 'checked') return { status: `Lie Eater ${CHECKED}${(last.added ?? []).length === 0 ? ' · no new check' : ''}`, screen: last.screen }
 
   return { status: 'Lie Eater · watching', screen: [INTRO] }
 }

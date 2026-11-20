@@ -18,6 +18,7 @@ const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { sha
 const bets = atom({ plugin: 'lie-eater', key: 'bets' } as const, [], { shape: SHAPE.bets })
 const ledger = atom({ plugin: 'lie-eater', key: 'ledger' } as const, EMPTY_LEDGER, { shape: SHAPE.ledger })
 const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
+const closing = atom({ plugin: 'lie-eater', key: 'closing' } as const, null, { shape: SHAPE.closing })
 
 /** Records one finished tool call and hands back the record. */
 export async function remember(
@@ -53,6 +54,7 @@ export async function startTurn($: EngineInterface): Promise<void> {
 
 export type PaneView = {
   now: Now
+  closing: readonly string[] | null
   watch: Terms | null
   last: Ruling | undefined
   records: readonly ToolRecord[]
@@ -69,6 +71,7 @@ export async function paneView($: EngineInterface): Promise<PaneView> {
 
   return {
     now: nowOf({ armed: w !== null, changed: w !== null && hasChanged(w), ...(last === undefined ? {} : { last }) }),
+    closing: await read($, closing),
     watch: w,
     last,
     records: await read($, records),

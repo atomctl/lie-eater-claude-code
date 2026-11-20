@@ -14,7 +14,7 @@ const play = (verdict: string, state: 'clean' | 'failed' | 'unknown'): Terms =>
 const ruling = (watch: Terms, more: Partial<Ruling> = {}): Ruling => {
   const lines = rule(watch, [], 'p')
 
-  return { id: 1, termsId: 1, turn: 1, at: 6000, lines, ...resultOf(lines, '', true), lie: false, ...more }
+  return { id: 1, termsId: 1, turn: 1, at: 6000, lines, ...resultOf(lines, '', true, []), lie: false, ...more }
 }
 const bet = (id: number, state: Bet['state']): Bet => ({ id, turn: 1, at: 5500, afterRecord: 0, expect: 'pass', confidence: 0.9, why: '', state })
 const card = (watch: Terms, r: Ruling, bets: Bet[] = []) =>
@@ -27,11 +27,14 @@ test('the card of a checked result: the three lines, the evidence, the bets', as
 
   expect(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')).toBe(true)
   expect(svg.trimEnd().endsWith('</svg>')).toBe(true)
+  // a long line is broken at its sentences, never cut
+  expect(svg).not.toContain('…')
   for (const text of [
     'LIE EATER',
     '✓ checked',
     'The checks passed after the last change.',
     'No existing check file was changed.',
+    'The AI added no new check for this change.',
     'npm test · 2026-11-20',
     'The tests really pass',
     'The AI said "90% sure". It was right 2 of 3 times.',

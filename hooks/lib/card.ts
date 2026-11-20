@@ -15,6 +15,19 @@ const esc = (text: string): string =>
   text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
 const cut = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max - 1)}…` : text)
 
+// A line of the person's screen, broken at its sentences (and, when one is still too long, between words): never cut.
+function wrap(text: string, max: number): string[] {
+  if (text.length <= max) return [text]
+
+  return text.split(/(?<=\.) /).flatMap(sentence =>
+    sentence.split(' ').reduce<string[]>((rows, word) => {
+      const last = rows.at(-1)
+
+      return last !== undefined && `${last} ${word}`.length <= max ? [...rows.slice(0, -1), `${last} ${word}`] : [...rows, word]
+    }, []),
+  )
+}
+
 function line(x: number, y: number, text: string, opts: { size?: number; fill?: string; weight?: string; anchor?: string; space?: number } = {}): string {
   const { size = 15, fill = C.text, weight = '400', anchor = 'start', space = 0 } = opts
 
@@ -36,7 +49,7 @@ export function cardSvg(receipt: Receipt): string {
   const body: string[] = []
   let y = 100
 
-  for (const text of [...said, ...(last?.accepted === true ? ['You accepted this change.'] : [])]) {
+  for (const text of [...said, ...(last?.accepted === true ? ['You accepted this change.'] : [])].flatMap(t => wrap(t, 60))) {
     body.push(line(40, y, cut(text, 60), { size: 15 }))
     y += 26
   }

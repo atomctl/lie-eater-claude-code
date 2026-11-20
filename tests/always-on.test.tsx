@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
+import { DEMO_ENDS, DEMO_HINT, DEMO_INTRO, DEMO_PROMPT, demoEnd } from '../hooks/lib/demo'
 import { MATH, PANE, bash, betRun, done, editCode, editFile, endTurn, paneLines, project, prompt, run, start, world } from './kit'
 
 const failing = () => ({ result: 'Exit code 1', isError: true as const, text: 'Exit code 1\n3 failed, 31 passed in 2.10s' })
@@ -10,6 +11,9 @@ const quiet = { toasts: [], opens: 0, sounds: 0 }
 const SKIPPED = MATH.replace("it('adds'", "it.skip('adds'")
 const GUTTED = "it('adds', () => {\n  expect(add(1, 2)).toBe(3)\n})\n"
 const RED = '✗ don\'t trust "done"'
+const PASSED = 'The checks passed after the last change. No existing check file was changed.'
+const NO_NEW = 'The AI added no new check for this change.'
+const ADD_ONE = 'If this change added or changed behaviour, add a check for it in a new file and call done again.'
 
 test('a session of questions only: the line says "watching", and nothing fires', async ($, on) => {
   const seen = world(on, project())
@@ -51,8 +55,8 @@ test('honest work with a passing full check: "checked", silently; the AI hears i
   await betRun($, 'npm test')
   const reply = String((await done($)).result)
 
-  expect(reply.split('\n').slice(0, 3)).toEqual(['✓ checked', 'The checks passed after the last change.', 'No existing check file was changed.'])
-  expect(status(seen)).toBe('Lie Eater ✓ checked')
+  expect(reply.split('\n').slice(0, 3)).toEqual(['✓ checked', PASSED, NO_NEW])
+  expect(status(seen)).toBe('Lie Eater ✓ checked · no new check')
   expect(seen).toMatchObject(quiet)
 })
 
@@ -76,6 +80,91 @@ test('the AI adds new checks in a new file: "checked"; they are watched from the
   expect(seen.toasts).toEqual([RED])
 })
 
+// ---- two kinds of green: did the AI add a check for its work? ----
+
+/** The AI writes a new file in the tests folder. */
+const addTestFile = (opts: ReturnType<typeof project>, name: string, text = "it('taxes', () => {\n  expect(tax(10)).toBe(2)\n})\n") => {
+  opts.files[name] = text
+  opts.dirs.tests.push(name)
+}
+
+test('green with a new check file: the third line names it, the status line is plain, and nothing is advised', async ($, on) => {
+  const opts = project()
+  const seen = world(on, opts)
+  on('tool.call', passing)
+
+  await start($)
+  await editFile($, opts.files)
+  addTestFile(opts, 'tax.test.ts')
+  await betRun($, 'npm test')
+  const reply = String((await done($)).result)
+
+  expect(reply.split('\n').slice(0, 3)).toEqual(['✓ checked', PASSED, 'The AI added new checks: tests/tax.test.ts.'])
+  expect(reply).not.toContain(ADD_ONE)
+  expect(status(seen)).toBe('Lie Eater ✓ checked')
+  expect(seen).toMatchObject(quiet)
+
+  // done again with nothing changed: nothing is new since the re-arm, so this green has no new check
+  expect(String((await done($)).result).split('\n').slice(0, 3)).toEqual(['✓ checked', PASSED, NO_NEW])
+  expect(status(seen)).toBe('Lie Eater ✓ checked · no new check')
+
+  // armed again: the new file is frozen now, so the next green with only a source change has no new check
+  await editFile($, opts.files)
+  await betRun($, 'npm test')
+  expect(String((await done($)).result).split('\n')[2]).toBe(NO_NEW)
+  expect(status(seen)).toBe('Lie Eater ✓ checked · no new check')
+})
+
+test('green with only source changed: "no new check", and one plain sentence for the AI; still green, still silent', async ($, on) => {
+  const opts = project()
+  const seen = world(on, opts)
+  on('tool.call', passing)
+
+  await start($)
+  await editFile($, opts.files)
+  await betRun($, 'npm test')
+  const reply = String((await done($)).result).split('\n')
+
+  expect(reply.slice(0, 3)).toEqual(['✓ checked', PASSED, NO_NEW])
+  expect(reply.slice(-2)).toEqual(['', ADD_ONE])
+  expect(status(seen)).toBe('Lie Eater ✓ checked · no new check')
+  expect(seen).toMatchObject(quiet)
+
+  // advice, not a refusal: the watch is armed again, and a check file added now is new to it
+  addTestFile(opts, 'tax.test.ts')
+  await betRun($, 'npm test')
+  expect(String((await done($)).result).split('\n').slice(0, 3)).toEqual(['✓ checked', PASSED, 'The AI added new checks: tests/tax.test.ts.'])
+  expect(status(seen)).toBe('Lie Eater ✓ checked')
+  expect(seen).toMatchObject(quiet)
+})
+
+test('a helper is the only new file in a test folder: it counts as a new check file (by folder, not by what it holds)', async ($, on) => {
+  const opts = project()
+  const seen = world(on, opts)
+  on('tool.call', passing)
+
+  await start($)
+  await editFile($, opts.files)
+  addTestFile(opts, 'helpers.ts', 'export const two = 2\n')
+  await betRun($, 'npm test')
+
+  expect(String((await done($)).result).split('\n')[2]).toBe('The AI added new checks: tests/helpers.ts.')
+  expect(status(seen)).toBe('Lie Eater ✓ checked')
+})
+
+test('several new check files: the first by name, and how many more', async ($, on) => {
+  const opts = project()
+  world(on, opts)
+  on('tool.call', passing)
+
+  await start($)
+  await editFile($, opts.files)
+  for (const name of ['c.test.ts', 'a.test.ts', 'b.test.ts']) addTestFile(opts, name)
+  await betRun($, 'npm test')
+
+  expect(String((await done($)).result).split('\n')[2]).toBe('The AI added new checks: tests/a.test.ts and 2 more files.')
+})
+
 test('a check put back with git checkout: "checked"', async ($, on) => {
   const opts = project()
   const seen = world(on, opts)
@@ -92,7 +181,7 @@ test('a check put back with git checkout: "checked"', async ($, on) => {
   await betRun($, 'npm test')
 
   expect(String((await done($)).result).split('\n')[0]).toBe('✓ checked')
-  expect(status(seen)).toBe('Lie Eater ✓ checked')
+  expect(status(seen)).toBe('Lie Eater ✓ checked · no new check')
 })
 
 test('a project with no checks: "no checks yet"; once checks exist, Lie Eater arms itself', async ($, on) => {
@@ -143,7 +232,7 @@ test('a code change after a green result: "not checked" again, silently', async 
   await editCode($)
   await betRun($, 'npm test')
   await done($)
-  expect(status(seen)).toBe('Lie Eater ✓ checked')
+  expect(status(seen)).toBe('Lie Eater ✓ checked · no new check')
 
   await editCode($)
   expect(status(seen)).toBe('Lie Eater ? not checked')
@@ -161,7 +250,7 @@ test('green, then done again with no change: still "checked"', async ($, on) => 
   await prompt($, 'Thanks. Anything else?')
 
   expect(String((await done($)).result).split('\n')[0]).toBe('✓ checked')
-  expect(status(seen)).toBe('Lie Eater ✓ checked')
+  expect(status(seen)).toBe('Lie Eater ✓ checked · no new check')
 })
 
 test('a run with extra options after a change proves nothing new: "not checked", with the plain command', async ($, on) => {
@@ -429,7 +518,7 @@ test('/accept: the files are frozen as they are, and "not checked" until a new f
   expect(String((await done($)).result).split('\n').slice(0, 2)).toEqual(['? not checked', 'The full check was not run after the last change.'])
   await betRun($, 'npm test')
   expect(String((await done($)).result).split('\n')[0]).toBe('✓ checked')
-  expect(status(seen)).toBe('Lie Eater ✓ checked')
+  expect(status(seen)).toBe('Lie Eater ✓ checked · no new check')
   // a red result after an accepted one is new: it is shown again
   opts.files['math.test.ts'] = GUTTED.replace("it('adds'", "it.skip('adds'")
   await done($)
@@ -496,6 +585,7 @@ test('the person never reads the old words: not in the pane, a toast, the status
   await seen.tick()
   shown.push(...seen.prompts.map(p => p.text))
 
+  shown.push(...DEMO_INTRO, DEMO_PROMPT, DEMO_HINT, ...Object.values(DEMO_ENDS), ...(demoEnd([]) ?? []))
   expect(shown.filter(line => BANNED.test(line))).toEqual([])
   expect(seen.status.every(line => !/green|yellow|red/.test(String(line)))).toBe(true)
 })

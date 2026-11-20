@@ -7,8 +7,8 @@ import type { EngineInterface } from 'claude-code'
 
 import type { Change, Frozen, Ruling, Terms, ToolRecord } from '../../types'
 import { refreshStatus, writeReceipts } from './house'
-import { DEMO_DIR, DEMO_FILES, DEMO_INTRO, DEMO_PROMPT, DEMO_VERDICT } from './demo'
-import { classify, isFrozen, keep } from './frozen'
+import { DEMO_DIR, DEMO_FILES, DEMO_INTRO, DEMO_PROMPT, DEMO_VERDICT, demoEnd } from './demo'
+import { classify, isFrozen, keep, newChecks } from './frozen'
 import { inProject, projectFiles, projectRoot, walk } from './project'
 import type { Walked } from './project'
 import { TEST_SOURCE, isTestFile } from './record'
@@ -26,6 +26,7 @@ const rulings = atom({ plugin: 'lie-eater', key: 'rulings' } as const, [], { sha
 const meta = atom({ plugin: 'lie-eater', key: 'meta' } as const, META_START, { shape: SHAPE.meta })
 const frozen = atom({ plugin: 'lie-eater', key: 'frozen' } as const, NOTHING_FROZEN, { shape: SHAPE.frozen })
 const parked = atom({ plugin: 'lie-eater', key: 'parked' } as const, null, { shape: SHAPE.parked })
+const closing = atom({ plugin: 'lie-eater', key: 'closing' } as const, null, { shape: SHAPE.closing })
 
 const RULINGS_KEPT = 50
 const CHECKS_PER_WATCH = 3
@@ -62,6 +63,8 @@ const ACCEPTED = 'You accepted the change. Lie Eater watches from the files as t
 const RESULT_FIRST = 'Lie Eater has a result for you first: type /check or /accept, then /lie-eater demo.'
 const CHANGED_SINCE = 'The files changed since that result. Wait for the next result, then accept.'
 const NOT_READ = 'Lie Eater could not read the project fully, so it cannot tell what you would accept.'
+// Under a green result with no new check file: advice to the AI, not a refusal.
+const ADD_A_CHECK = 'If this change added or changed behaviour, add a check for it in a new file and call done again.'
 
 const NO_CHECK_RUN = (command: string, flag: string): string =>
   `Lie Eater cannot use \`${command}\` as the full check: with \`${flag}\` it runs no check.`
@@ -299,15 +302,17 @@ export async function doneCall($: EngineInterface, input: Record<string, unknown
   }
 
   const seen = await look($, w)
+  const was = await read($, frozen)
   // Unread when armed, or unread now: either way that file cannot be compared.
-  const lines = rule(w, seen.changes, seen.walked.print, [...new Set([...(await read($, frozen)).unread, ...seen.now.unread])])
+  const lines = rule(w, seen.changes, seen.walked.print, [...new Set([...was.unread, ...seen.now.unread])])
   const named = typeof input.broken === 'string' ? input.broken : ''
   const worked = hasWorked(w, seen.walked.print)
-  const { result, screen } = resultOf(lines, named, worked)
-  const before = (await read($, rulings)).findLast(r => r.termsId === w.id)
+  const { result, screen, added } = resultOf(lines, named, worked, newChecks(was, seen.walked.names))
+  const earlier = (await read($, rulings)).filter(r => r.termsId === w.id)
+  const before = earlier.at(-1)
   const lost = lostOf(seen.changes)
   const print = seen.walked.print
-  await addRuling($, { termsId: w.id, lines, result, screen, lie: isLie(lines, worked, named), ...(lost === undefined ? {} : { lost }), ...(print === undefined ? {} : { print }) })
+  await addRuling($, { termsId: w.id, lines, result, screen, ...(added === undefined ? {} : { added }), lie: isLie(lines, worked, named), ...(lost === undefined ? {} : { lost }), ...(print === undefined ? {} : { print }) })
   await writeReceipts($, w)
 
   // A second red result in a row only updates the pane and the line.
@@ -318,12 +323,17 @@ export async function doneCall($: EngineInterface, input: Record<string, unknown
     thump($)
   }
 
+  // The demo's closing lines stand in the pane until the next result.
+  const end = w.demo === true && result === 'checked' ? demoEnd(earlier) : undefined
+  await update($, closing, () => end ?? null)
+
   if (result === 'checked') {
     await rearm($, w, { walked: seen.walked, set: seen.now }, false)
   }
 
   await refreshStatus($)
-  const order = result === 'checked' ? undefined : repairOrder(lines, w.verdict)
+  // The demo's folder holds only the demo's files: no advice to add one there.
+  const order = result !== 'checked' ? repairOrder(lines, w.verdict) : added?.length === 0 && w.demo !== true ? ADD_A_CHECK : undefined
 
   return [...screen, '', 'Details:', ...detailLines(lines), ...(order === undefined ? [] : ['', order])].join('\n')
 }
@@ -438,9 +448,10 @@ export async function acceptCmd($: EngineInterface): Promise<string> {
 }
 
 /**
- * `/lie-eater demo`: a tiny project with one failing test, and the AI's task
- * on it. The demo runs on a watch of its own: the project's watch (and its
- * frozen check files) is kept aside, untouched, and put back after the demo.
+ * `/lie-eater demo`: a tiny project with one bug and one failing test, and
+ * act 1's staged order to the AI: the lazy fix. The demo runs on a watch of its
+ * own: the project's watch (and its frozen check files) is kept aside,
+ * untouched, and put back after the demo.
  */
 export async function demoCmd($: EngineInterface): Promise<string> {
   const w = await read($, watch)
@@ -465,6 +476,7 @@ export async function demoCmd($: EngineInterface): Promise<string> {
   }
 
   await setWatch($, { ...(await fresh($, DEMO_VERDICT)), demo: true, root: DEMO_DIR }, await walk($, DEMO_DIR))
+  await update($, closing, () => null)
   // The person asked to watch: the pane opens.
   await $.ui.open({ id: PANE, title: 'Lie Eater' }).catch(() => undefined)
   sendAsPerson($, DEMO_PROMPT)

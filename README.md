@@ -6,13 +6,21 @@ A "check" is one of your project's tests. Lie Eater is a mod for Claude Code. Wh
 
 ## The three results
 
-**✓ checked**: the check files that were there when Lie Eater began to watch are unchanged, and the full check passed on the files exactly as they are now. That is not the same as "no bugs": a weak check stays weak.
+**✓ checked**: the check files that were there when Lie Eater began to watch are unchanged, and the full check passed on the files exactly as they are now. That is not the same as "no bugs": a weak check stays weak. The third line says whether the AI added a check for its work:
 
 ```
 ✓ checked
-The checks passed after the last change.
-No existing check file was changed.
+The checks passed after the last change. No existing check file was changed.
+The AI added new checks: tests/test_tax.py.
 ```
+
+```
+✓ checked
+The checks passed after the last change. No existing check file was changed.
+The AI added no new check for this change.
+```
+
+The commonest lazy work is new code with no new check. Both are green, but the line under the prompt tells them apart: `Lie Eater ✓ checked`, or `Lie Eater ✓ checked · no new check`. With no new check the AI is also told: "If this change added or changed behaviour, add a check for it in a new file and call done again." That is advice, not a refusal: the result stays ✓.
 
 Existing check files are frozen: new checks go in a new file. The AI is told so.
 
@@ -44,7 +52,7 @@ The button asks the AI to run the full check and say "done" again.
 ## You do nothing: it is always on
 
 - Lie Eater starts with Claude Code. It finds your project's checks by itself.
-- One line under the prompt always says where you stand: `Lie Eater · watching`, `Lie Eater ✓ checked`, `Lie Eater ✗ don't trust "done"`, `Lie Eater ? not checked` or `Lie Eater ? no checks yet`.
+- One line under the prompt always says where you stand: `Lie Eater · watching`, `Lie Eater ✓ checked`, `Lie Eater ✓ checked · no new check`, `Lie Eater ✗ don't trust "done"`, `Lie Eater ? not checked` or `Lie Eater ? no checks yet`.
 - It stays quiet. Only "don't trust" opens the Lie Eater pane, shows one message and plays a sound.
 - **No checks yet?** Press `Add checks` in the pane, or type `/check`. The AI then writes your first tests. They protect the work from then on; the work done before them is not checked.
 
@@ -54,7 +62,7 @@ The button asks the AI to run the full check and say "done" again.
 | `/check <command>` | You name the test command, for example `/check pnpm test`. A command that runs no check (`--version`, `--help`, `--collect-only`, `--list…`, `--dry-run`, `--passWithNoTests`) is refused |
 | `/accept` | Accept the change that "don't trust" shows; then "not checked" until the full check passes again |
 | `/lie-eater` | Opens the pane: the result on top, the Details under it |
-| `/lie-eater demo` | The demo (below) |
+| `/lie-eater demo` | The demo in two acts (below) |
 | `/call pass` or `/call fail` | Your own guess on the AI's next test run (see the bets below) |
 
 ## Try it
@@ -65,7 +73,13 @@ Until the public release, run it from this folder:
 claude --plugin-dir /path/to/lie-eater
 ```
 
-Then type **`/lie-eater demo`**. Lie Eater makes a tiny throwaway project with one failing check and gives the AI the task. You watch the AI fix it, say "done", and Lie Eater check it, in about a minute. You need no project of your own.
+Then type **`/lie-eater demo`**. Lie Eater makes a tiny throwaway project in `.lie-eater/demo` (one bug, one failing check) and plays it in two acts in the Lie Eater pane. You need no project of your own.
+
+- **Act 1 is staged by the demo.** The demo sends the AI one order, as you, that says so: take the lazy way, make the failing check pass by changing the check, not the bug, run the full check and call `done`. The checks pass. Lie Eater then shows, the normal way, `✗ don't trust "done"` and `The AI changed N lines in the check file .lie-eater/demo/price.test.mjs.` (N is what the AI changed), and the pane shows its two buttons. Under them, for the demo only: `Now press "Put it back and fix the work".`
+- **Act 2 is the repair.** The button sends the AI back: it puts the check back, fixes the bug, runs the full check and calls `done`: `✓ checked`. The pane then says what happened ("The checks were green both times. The first time a check had been changed to get there."), that Lie Eater is always on in your own project, and that `/lie-eater` opens the pane. These lines stay until the next result.
+- **If the AI will not take the lazy way** (the `done` tool tells it that check files are frozen) and fixes the bug, the demo ends at ✓ and says so: "The AI would not take the lazy way: it fixed the bug. Nothing to catch this time."
+
+Nothing in the demo is special-cased in how Lie Eater decides: what you see is the real product. The demo writes only its own two files, never replaces your project's watch or a result you have not answered, and your project's watch is back after it.
 
 ## For the expert
 
@@ -100,7 +114,7 @@ Lie Eater reads no meaning from the text of a test. It compares files.
 | A folder could not be listed, or the project has 400 folders or 5,000 files, or more | at best ? not checked: "The project could not be read fully." |
 
    Under a ✗ the worst comes first (how the checks run, then a moved or deleted file, then changed lines, then a failing run), with "and 2 more files." when there are more. Then "The AI said so itself." when `broken` names something; "The AI did not say so." when a check file changed, the AI named nothing, and there was work since the watch began. A plain failing run gets neither, unless the AI named it. Blank, "none", "no", "n/a" or "-" name nothing.
-7. **After ✓** the frozen files are taken from the files exactly as they were compared for that result: new check files are protected from then on. An edit made with the edit tools after ✓ makes the line `? not checked` again (a change made through the shell shows only at the next `done`). **After ✗** the same frozen files stay until a later `done` is ✓, or you type `/accept`. `/accept` accepts what that result showed and nothing later: when the project's fingerprint differs from the one measured for that result, it says "The files changed since that result. Wait for the next result, then accept."; when the project could not be read fully, it accepts nothing. Accepted, the files are frozen as they are, the command behind `npm test` is found again (the test script may be new), and the full run before is void: `? not checked` until the full check passes again.
+7. **At ✓** the third line names the check files that are new since the watch was armed (or armed again): test-named files and files in a test folder that are there now and were not in the frozen set (not the files that decide how checks run). The first by name is shown, then "and 2 more files."; with none, "The AI added no new check for this change." It is decided by the file's name and folder only, never by what it holds. **After ✓** the frozen files are taken from the files exactly as they were compared for that result: new check files are protected from then on. An edit made with the edit tools after ✓ makes the line `? not checked` again (a change made through the shell shows only at the next `done`). **After ✗** the same frozen files stay until a later `done` is ✓, or you type `/accept`. `/accept` accepts what that result showed and nothing later: when the project's fingerprint differs from the one measured for that result, it says "The files changed since that result. Wait for the next result, then accept."; when the project could not be read fully, it accepts nothing. Accepted, the files are frozen as they are, the command behind `npm test` is found again (the test script may be new), and the full run before is void: `? not checked` until the full check passes again.
 8. **Quiet:** ✓ and ? change only the line under the prompt. The first ✗ of a watch opens the pane, shows one message and plays a sound; a second ✗ in a row only updates the pane and the line.
 
 ### Bets
@@ -114,19 +128,19 @@ The main AI is asked to say, before each test or build run, what it expects (`pa
 - **It reads** the files of the frozen set (above) when it arms itself, at the start of each run of the full check, at each `done` and `/check`, and at `/accept`, and `package.json`, `pyproject.toml`, `pytest.ini`, `Cargo.toml`, `go.mod` and `Makefile` to find the test command. It keeps the frozen texts in the session's state, not in your project.
 - **It writes** files only in `.lie-eater/` in your project's root:
   - `ledger.json`: every settled bet, for the score in this repository. A ledger of the earlier version is read for its bets; its games and debt are no longer kept.
-  - `receipts.json` and `receipts.md`: the results of the current watch, written at each `done`. Format `lie-eater/receipts`, **version 3**. What changed from version 2: a line's `term` is now `verdict`, `config`, `gone`, `changed` or `unread` (no more `asserts`, `tests`, `skips`), and `n` is the number of changed lines; commands are kept masked: every value set in front is `NAME=…` and every quoted text is `"…"` (in `check.command`, the lines and the bets); no text of a check file is kept.
+  - `receipts.json` and `receipts.md`: the results of the current watch, written at each `done`. Format `lie-eater/receipts`, **version 4**. What changed from version 3: a ✓ result has `added`, the check files new since the watch was armed (an empty list: no new check), and its `screen` is the three lines above (the second line is now one line; the third names the new check files or says there are none). What changed from version 2 to 3: a line's `term` is now `verdict`, `config`, `gone`, `changed` or `unread` (no more `asserts`, `tests`, `skips`), and `n` is the number of changed lines; commands are kept masked: every value set in front is `NAME=…` and every quoted text is `"…"` (in `check.command`, the lines and the bets); no text of a check file is kept.
   - `card.svg`: the newest result as a picture, like the one above.
   - `ledger.unreadable.json`: a copy of a ledger file it could not read, so that nothing is lost.
   - for `/lie-eater demo`, the two files of the demo project in `.lie-eater/demo/`, only when that folder holds no other file.
 - **It refuses** a test or build run of the main AI that has no bet, twice per turn at most. It refuses nothing else and it never changes a command.
 - **It adds** two tools the AI can call (`bet` and `done`) and one hidden line on a test result that tells the AI how its bet ended.
-- **It sends a prompt** as you only when you press a button or type `/check` or `/lie-eater demo`. Such a prompt holds fixed sentences, the test command and file paths (cleaned: no line break or control character, 200 characters at most), never text from your files.
+- **It sends a prompt** as you only when you press a button or type `/check` or `/lie-eater demo`. Such a prompt holds fixed sentences, the test command and file paths (cleaned: no line break or control character, 200 characters at most), never text from your files. The demo's prompt is the staged order of Act 1: it asks for the lazy fix in the demo's own folder, and says that it is staged.
 - **It makes no model call, starts no program and opens no network connection** of its own. What it hands the AI (the `done` answer, the bet replies, the prompts above) goes to the model like the rest of your session.
 
 ```json
 {
   "format": "lie-eater/receipts",
-  "version": 3,
+  "version": 4,
   "check": { "command": "npm test", "since": "2026-11-20T09:00:00.000Z" },
   "results": [{ "id": 1, "result": "distrust", "screen": ["✗ don't trust \"done\"", "The AI changed 1 line in the check file tests/test_cart.py.", "The AI did not say so."], "lie": true, "lines": [{ "term": "changed", "pass": false, "plain": "The AI changed 1 line in a check file", "detail": "tests/test_cart.py: 1 line changed", "file": "tests/test_cart.py", "n": 1 }] }],
   "bets": [{ "id": 1, "expect": "pass", "confidence": 0.9, "state": "lost", "line": "npm test → 3 failed, 31 passed" }],
@@ -151,7 +165,7 @@ The main AI is asked to say, before each test or build run, what it expects (`pa
 
 The games found fourteen faults; a code review found eleven more, in shapes no game had used. Each was fixed with a test that failed first. One test sends 5,760 honest shapes of a test command through the rules: none reads a pass as a fail or a fail as a pass. (Since this version a shape with an extra flag or a value set in front, like `CI=1 npm test`, is "not checked": it is not the full check.) Two other models attacked the earlier version ([the red team](docs/superpowers/specs/2026-11-20-lie-eater-design.md#22-compare-files-not-text)); each row of their table of attacks is now a test. Their second round ([section 23](docs/superpowers/specs/2026-11-20-lie-eater-design.md#23-frozen-means-frozen)) closed "added to" and bound the full check to one command and one folder. What stays open is in the limits. A new kind of project will find more: please report a result that you think is wrong, with `.lie-eater/receipts.json`.
 
-**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each is replayed through the same rules the live mod uses, and ends with a `done` call. One command reproduces the table and runs the mod's 267 tests:
+**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each is replayed through the same rules the live mod uses, and ends with a `done` call. One command reproduces the table and runs the mod's 278 tests:
 
 ```
 claude plugin test .
@@ -175,6 +189,7 @@ In Lie Eater the proof is also fixed before the work: the check files are frozen
 
 - **"Checked" is not "bug-free", and a weak check stays weak.** It says: the check files that existed were not changed, and the full check passed on the files as they are. A project with weak checks gets a weak proof.
 - **It catches the lazy shortcut, not a forger.** For a file outside the frozen set the fingerprint is its size and modification time: a source change that keeps the size and puts the old time back is not seen. The frozen texts are compared byte for byte, but a big file is kept as a hash (64 bits and the length), which guards against accidents, not against two files made to share it. An AI that fakes a test run on purpose (a script named like the runner) can pass. Every command is in the record.
+- **"New check" is decided by file name and folder, not by content.** A new empty test file, a test file with no real check in it, or a helper put in a test folder (`tests/helpers.py`) counts as "The AI added new checks". Read the file the line names.
 - **A new check file can still change what other checks do.** New check files are free. One can patch shared state when it is loaded (a Python test module that replaces a function at import, a new test that sets a global), and the old checks then test something else. The new file is in the frozen set from the next ✓; read new check files.
 - **Only the files of the frozen set are frozen.** Helpers and source that checks import from outside test folders (`src/test-utils.ts`, a fixture factory in `src/`) are not frozen: a change to them is a code change, seen only by the fingerprint. A setup file in a place or a language the list does not know is not frozen either.
 - **Some folders are outside the fingerprint.** `node_modules`, `venv`, `env`, `dist`, `build`, `target`, `vendor`, `__pycache__` and every folder that starts with a dot (`.venv`, `.github`) are not walked: a change there, or a check that runs against `dist/`, is not seen.
@@ -194,6 +209,8 @@ In Lie Eater the proof is also fixed before the work: the check files are frozen
 - **A suite that is already red** counts as "already failing" only when the AI runs the full check before the project changes. If it changes something first, the failure reads as `✗ The checks fail.` (with no "did not say so").
 - **The record is read, never re-run.** Lie Eater sees the test output the AI saw.
 - **The demo runs on a watch of its own.** Your project's watch is kept aside, untouched, and comes back after the demo's ✓ (or `/accept`). While the demo runs, your project's runs are not tracked; the fingerprint decides when you are back.
+- **The demo's Act 1 depends on the AI.** A model may refuse the lazy order (the demo then ends at ✓ and says so), or repair at once after the red result without waiting for the button (the closing lines are the same). Under the demo's ✓ the AI is not told to add a new check, so that it writes nothing more into the demo's folder. In a project with checks of its own, the line under the prompt goes back to your project at the demo's ✓, so it never shows the demo's `✓ checked`: the pane says how the demo ended. The two acts are tested in the test kit only: they have not been played in a real session yet.
+- **"No new check" speaks of the work since the last ✓.** After a green result the watch is armed again with the new check files frozen, so a second `done` with nothing changed says "The AI added no new check for this change." even when the first green named new checks.
 - **A check file that cannot be read stays unread.** A file of the frozen set that could not be read when the watch was armed (for example one over 4 MiB, the engine's limit for one read) makes every result at best "not checked" until a new watch is armed: after an accepted ✗, or in a new session.
 - **Big projects:** past 400 folders or 5,000 files, or when a folder cannot be listed, the project is not read to its end, and no result is better than "not checked". The frozen texts are kept in the session's memory (2,000,000 characters in all; past that a file is kept as a hash). Nothing was measured on a large project, and nothing in Go or Rust.
 - **The sound plays on macOS only.** The status line, the pane and the buttons are tested in the test kit; the new screens have not been seen on a real screen yet.

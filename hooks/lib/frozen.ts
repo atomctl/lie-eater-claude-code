@@ -1,7 +1,7 @@
 // The check files, frozen when the watch is armed, and what became of each by
 // `done`. Lie Eater compares files: it reads no meaning from their text.
 // Plain functions; nothing here talks to the engine.
-import type { Change, Kept } from '../../types'
+import type { Change, Frozen, Kept } from '../../types'
 import { isTestFile } from './record'
 
 const TEXT_KEPT = 200_000
@@ -29,6 +29,15 @@ export const decidesHowChecksRun = (path: string): boolean => CONFIG.test(path)
 
 /** In the frozen set: every file in a test folder, every test-named file, and the files that decide how the checks run. */
 export const isFrozen = (path: string): boolean => isTestFile(path) || decidesHowChecksRun(path)
+
+/**
+ * The check files that are new since the watch was armed (or armed again):
+ * test-named files and files in a test folder that are in the walk now and
+ * not in the frozen set. Decided by name and folder only: a helper or an empty
+ * test file counts. Sorted, so that the first named is always the same.
+ */
+export const newChecks = (was: Frozen, names: readonly string[]): string[] =>
+  names.filter(name => isTestFile(name) && !decidesHowChecksRun(name) && !(name in was.files) && !was.unread.includes(name)).sort()
 
 // Of a package.json only what decides the checks counts: an added dependency or a `lint` script changes none.
 function checksPart(text: string): string {

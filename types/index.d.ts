@@ -58,6 +58,7 @@ export type Ruling = {
   accepted?: true             // the person accepted the change (/accept)
   lost?: Record<string, string[]> // per changed check file, original lines that are gone: the pane only, never the receipts
   print?: string              // the project's fingerprint measured for this result: /accept takes nothing later
+  added?: string[]            // a green result only: the check files new since the watch was armed; empty: no new check
 }
 export type Bet = {
   id: number; turn: number; at: number
@@ -78,6 +79,7 @@ declare module 'claude-code' {
       records: Shaped<ToolRecord[]>; watch: Shaped<Terms | null>; bets: Shaped<Bet[]>
       rulings: Shaped<Ruling[]>; ledger: Shaped<Ledger>; meta: Shaped<Meta>
       frozen: Shaped<Frozen>; parked: Shaped<Parked | null>
+      closing: Shaped<string[] | null>   // the demo's closing lines, shown in the pane until the next result
     }
   }
 }

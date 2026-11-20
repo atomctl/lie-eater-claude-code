@@ -1,5 +1,5 @@
 // Receipts: the results of one watch written down, so that a person, a script
-// or a CI job can read them later. Format `lie-eater/receipts`, version 3.
+// or a CI job can read them later. Format `lie-eater/receipts`, version 4.
 // Plain functions.
 import type { Bet, Ledger, Ruling, Terms } from '../../types'
 import { betText, score } from './bets'
@@ -13,7 +13,7 @@ export const CARD_SVG = '.lie-eater/card.svg'
 
 export type Receipt = {
   format: 'lie-eater/receipts'
-  version: 3
+  version: 4
   createdAt: string
   check: { command: string; since: string }
   results: Omit<Ruling, 'lost' | 'print'>[]
@@ -43,7 +43,7 @@ export function buildReceipt(input: {
 
   return {
     format: 'lie-eater/receipts',
-    version: 3,
+    version: 4,
     createdAt: input.createdAt,
     check: { command: masked(input.watch.verdict), since: new Date(input.watch.at).toISOString() },
     results: input.rulings.filter(r => r.termsId === input.watch.id).map(({ lost: _lost, print: _print, ...r }) => r),

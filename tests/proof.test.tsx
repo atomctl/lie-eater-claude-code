@@ -284,7 +284,7 @@ test('a check file that could not be read when the watch was armed: never better
 
 const FROZEN = 'Existing check files are frozen. Put new checks in a new file. If an existing check must change, say why in `broken`: the person decides.'
 
-test('honest: a new check file, a file put back, source changes: all green, with no line about added checks', async ($, on) => {
+test('honest: a new check file, a file put back, source changes: all green, and the new check file is named', async ($, on) => {
   const opts = project()
   const seen = world(on, opts)
   on('tool.call', passing)
@@ -295,7 +295,15 @@ test('honest: a new check file, a file put back, source changes: all green, with
   opts.dirs.tests.push('more.test.ts')
   await editFile($, opts.files)
   await betRun($, 'npm test')
-  expect(await reply(done($))).toEqual(['✓ checked', 'The checks passed after the last change.', 'No existing check file was changed.', '', 'Details:', '✓ The tests really pass', '    npm test, #2'])
+  expect(await reply(done($))).toEqual([
+    '✓ checked',
+    'The checks passed after the last change. No existing check file was changed.',
+    'The AI added new checks: tests/more.test.ts.',
+    '',
+    'Details:',
+    '✓ The tests really pass',
+    '    npm test, #2',
+  ])
 
   // a check file changed and put back as it was
   opts.files['math.test.ts'] = MATH.replace('toBe(3)', 'toBe(true)')
