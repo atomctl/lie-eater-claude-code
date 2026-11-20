@@ -1,8 +1,8 @@
-# Field report: one real mod, 214 tests, 167 games
+# Field report: one real mod, 215 tests, 167 games
 
 > **DRAFT, not posted.** Written for the Claude Code team's thread on mods (issue 91870), where they ask for critical feedback. The owner of this repository posts it under their own name, or not at all. Everything below was seen on build 2.1.311 on 20 Nov 2026; check the newest build before posting, because some of it may be fixed.
 
-I built a mod that uses most of the interface: a referee that makes the AI bet before each test run and rules on "done" from the tool record. It is 3,000 lines of hooks code with 214 tests, and I played 167 headless games with it. It hooks `tool.call` (refuse, and a context line on the result), `command.run`, `prompt.submit`, `turn.complete`, `session.start` and `ui.render` (Pane, Spinner). It calls `$.tool.register`, `$.model.complete`, `$.prompt.submit`, `$.fs`, `$.clock`, `$.audio`, `$.session.root` and state atoms.
+I built a mod that uses most of the interface: a referee that makes the AI bet before each test run and rules on "done" from the tool record. It is 3,000 lines of hooks code with 215 tests, and I played 167 headless games with it. It hooks `tool.call` (refuse, and a context line on the result), `command.run`, `prompt.submit`, `turn.complete`, `session.start` and `ui.render` (Pane, Spinner). It calls `$.tool.register`, `$.model.complete`, `$.prompt.submit`, `$.fs`, `$.clock`, `$.audio`, `$.session.root` and state atoms.
 
 The short version: the interface is good enough to build something real in a day (every commit of this mod is from 20 Nov 2026). The friction is almost all in one place: **the engine quietly does something different from what the types, the test kit or the docs led me to expect, and nothing tells me.** Twelve cases follow, most painful first.
 
