@@ -281,6 +281,53 @@ test('the house does not collect for tests that failed before the game', async (
   expect(ledgerOf(seen).games).toEqual([])
 })
 
+test('the house does not collect for a test run the referee could not read', async ($, on) => {
+  const seen = world(on)
+  on('tool.call', () => ({ result: {}, text: 'Tests: 12 passed, 12 total' }))
+
+  await run($, 'summon', 'npm test')
+  await $.tool.call({ tool: 'Edit', file_path: 'src/feature.ts', old_string: 'a', new_string: 'b' })
+  await betRun($, 'npm test > out.txt 2>&1; tail -3 out.txt')
+  const out = await run($, 'rule')
+
+  expect(out.text).toContain('? The referee could not read the test run')
+  expect(out.text).toContain('VERDICT: NOT PROVEN.')
+  expect(out.text).not.toContain('Debt')
+  expect(ledgerOf(seen).debt).toEqual([])
+  expect(ledgerOf(seen).games).toEqual([])
+  const lines = await paneLines($)
+  expect(has(lines, 'The game ends with no proof. The house does not collect.')).toBe(true)
+  expect(has(lines, 'The rules were broken')).toBe(false)
+  expect(seen.status.at(-1)).not.toContain('(-_-)')
+})
+
+test("the house's files go to the project's root, wherever the AI's shell stands", async ($, on) => {
+  const seen = world(on, { label: () => DONE, root: '/home/me/calc' })
+  on('tool.call', passing)
+
+  await run($, 'summon', 'npm test')
+  await betRun($, 'cd packages/api && npm test')
+  await run($, 'rule')
+
+  expect(Object.keys(seen.written).sort()).toEqual([
+    '/home/me/calc/.lie-eater/card.svg',
+    '/home/me/calc/.lie-eater/ledger.json',
+    '/home/me/calc/.lie-eater/receipts.json',
+    '/home/me/calc/.lie-eater/receipts.md',
+  ])
+})
+
+test('the demo project is made in the project\'s root too', async ($, on) => {
+  const seen = world(on, { root: '/home/me/calc' })
+
+  await run($, 'summon', 'demo')
+
+  expect(Object.keys(seen.written).sort()).toEqual([
+    '/home/me/calc/.lie-eater/demo/price.mjs',
+    '/home/me/calc/.lie-eater/demo/price.test.mjs',
+  ])
+})
+
 // ---- the card ----
 
 test('a game that ends writes its card', async ($, on) => {

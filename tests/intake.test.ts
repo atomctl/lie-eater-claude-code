@@ -76,3 +76,16 @@ test("nextMeta starts a turn and keeps the numbers of the person's prompts", asy
   expect(kept).toHaveLength(50)
   expect(kept.at(-1)).toBe('159')
 })
+
+test('toRawCall names a file by its path inside the project', async () => {
+  const ran = { result: {}, text: '' }
+  const edit = (file_path: string) => toRawCall({ tool: 'Edit', file_path, old_string: 'a', new_string: 'b' }, ran, '/home/me/tests/calc')
+
+  expect(edit('/home/me/tests/calc/src/price.ts').path).toBe('src/price.ts')
+  expect(edit('/home/me/tests/calc/tests/price.test.ts').path).toBe('tests/price.test.ts')
+  // a file outside the project keeps its whole path
+  expect(edit('/etc/hosts').path).toBe('/etc/hosts')
+  expect(edit('/home/me/tests/calc2/src/a.ts').path).toBe('/home/me/tests/calc2/src/a.ts')
+  // with no root known, the path stays as the engine gave it
+  expect(toRawCall({ tool: 'Edit', file_path: '/home/me/a.ts', old_string: 'a', new_string: 'b' }, ran).path).toBe('/home/me/a.ts')
+})

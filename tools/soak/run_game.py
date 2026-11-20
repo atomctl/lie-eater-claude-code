@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Plays one real game of Lie Eater, headless, and writes what happened as JSON.
 
-usage: run_game.py <game-id> <run-dir> <model> <mod-dir> <out.json>
+usage: run_game.py <game-id> <run-dir> <model> <mod-dir> <out.json> [<setting sources>]
+
+A mod folder of `-` plays the game with no mod and no referee: the control.
 
 The run folder must hold the task's files and a `task.json`:
-  prompt   what the person asks the AI to do
+  prompt   what the person asks the AI to do (none: the mod sends the task itself,
+           as `/summon demo` does)
+  summon   the summon message (default `/summon`)
+  then     the messages after the task's turn (default `/explain`, `/rule`);
+           `<turn>` waits for a turn that the mod itself starts (Fix this)
   before   messages sent before the summon (for example: "run the tests once")
   truth    the command that this script runs AFTER the game to see for itself
            whether the tests pass
@@ -24,12 +30,16 @@ import time
 
 TOOLS = ["Bash", "Edit", "Write", "Read", "mcp__lie-eater__bet"]
 TASK_TIMEOUT = 900  # seconds for the AI's work
+TURN_START = 60  # seconds in which a turn that the mod starts must show itself
+MOD_TURN = "<turn>"
 RULING_WAIT = 12  # seconds after the turn, for the referee's ruling
 
 
 class Session:
     def __init__(self, cwd, model, mod, log, sources):
-        cmd = ["claude", "--plugin-dir", str(mod), "--model", model, "--allowedTools", *TOOLS]
+        cmd = ["claude", "--model", model, "--allowedTools", *TOOLS[: -1 if mod == "-" else None]]
+        if mod != "-":
+            cmd += ["--plugin-dir", str(mod)]
         if sources:
             cmd += ["--setting-sources", sources]
         cmd += ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
@@ -51,14 +61,21 @@ class Session:
         """Sends one message and returns every event up to the end of its turn."""
         self.proc.stdin.write(json.dumps({"type": "user", "message": {"role": "user", "content": text}}) + "\n")
         self.proc.stdin.flush()
+        return self._turn(text[:60], timeout)
+
+    def listen(self, timeout):
+        """Waits for a turn that the mod itself starts, and returns its events."""
+        return self._turn("a turn started by the mod", timeout, start=TURN_START)
+
+    def _turn(self, what, timeout, start=None):
         seen = []
-        end = time.time() + timeout
+        began = time.time()
         while True:
-            left = end - time.time()
-            if left <= 0:
-                raise TimeoutError(text[:60])
+            waited = time.time() - began
+            if waited >= timeout or (start is not None and not seen and waited >= start):
+                raise TimeoutError(what if seen or start is None else f"no turn started: {what}")
             try:
-                event = self.events.get(timeout=min(left, 5))
+                event = self.events.get(timeout=5)
             except queue.Empty:
                 continue
             if event is None:
@@ -144,11 +161,19 @@ def main():
         try:
             for i, message in enumerate(task.get("before", [])):
                 result["turns"][f"before{i}"] = digest(session.say(message, 300))
-            result["turns"]["summon"] = digest(session.say("/summon", 60))
-            result["turns"]["task"] = digest(session.say(task["prompt"], TASK_TIMEOUT))
-            time.sleep(RULING_WAIT)
-            result["turns"]["explain"] = digest(session.say("/explain", 60))
-            result["turns"]["rule"] = digest(session.say("/rule", 60))
+            if mod != "-":
+                result["turns"]["summon"] = digest(session.say(task.get("summon", "/summon"), 60))
+            if task.get("prompt"):
+                result["turns"]["task"] = digest(session.say(task["prompt"], TASK_TIMEOUT))
+            else:
+                result["turns"]["task"] = digest(session.listen(TASK_TIMEOUT))
+            time.sleep(RULING_WAIT if mod != "-" else 0)
+            for i, step in enumerate(task.get("then", ["/explain", "/rule"]) if mod != "-" else []):
+                if step == MOD_TURN:
+                    result["turns"][f"{i} turn"] = digest(session.listen(TASK_TIMEOUT))
+                    time.sleep(RULING_WAIT)
+                else:
+                    result["turns"][f"{i} {step}"] = digest(session.say(step, 60))
         except Exception as error:  # a timeout or a dead session is a result too
             result["error"] = f"{type(error).__name__}: {error}"
         finally:
@@ -158,6 +183,7 @@ def main():
     result["receipts"] = read_json(run / ".lie-eater" / "receipts.json")
     result["seen"] = look(run, task)
     result["note"] = task.get("note")
+    result["breaks"] = task.get("breaks")
     out.write_text(json.dumps(result, indent=1))
     print(f"{game}: done in {result['seconds']}s{' ERROR ' + result['error'] if 'error' in result else ''}")
 

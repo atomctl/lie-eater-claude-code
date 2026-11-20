@@ -1,7 +1,7 @@
 // The recorder's rules: what one tool call was, and how it ended.
 // Plain functions only. Nothing here talks to the engine.
 import type { TestEdit, ToolRecord } from '../../types'
-import { CODE_FILE, classifyCommand, countsAreItsOwn, isMasked } from './commands'
+import { CODE_FILE, classifyCommand, countsAreItsOwn, isMasked, sharesOutput } from './commands'
 
 export { classifyCommand, isShellEdit } from './commands'
 
@@ -51,15 +51,15 @@ function summaries(output: string): Counts[] {
   return found
 }
 
+// Of several summaries, the worst counts.
+const worst = (found: readonly Counts[]): Counts | undefined =>
+  found.length === 0
+    ? undefined
+    : { passed: Math.max(...found.map(c => c.passed)), failed: Math.max(...found.map(c => c.failed)) }
+
 /** The pass and fail counts of a test run. Of several summaries, the worst counts. */
 export function parseCounts(output: string): Counts | undefined {
-  const found = summaries(output)
-
-  if (found.length === 0) {
-    return undefined
-  }
-
-  return { passed: Math.max(...found.map(c => c.passed)), failed: Math.max(...found.map(c => c.failed)) }
+  return worst(summaries(output))
 }
 
 const TEST_FILE =
@@ -146,7 +146,10 @@ export function makeRecord(raw: RawCall, id: number, turn: number, at: number): 
 
   if (raw.command !== undefined) {
     const kind = classifyCommand(raw.command)
-    const counts = kind === 'test' ? parseCounts(text) : undefined
+    const found = kind === 'test' ? summaries(text) : []
+    // Beside a command that prints files, a second summary may be a file's text:
+    // then the counts belong to nobody, and only an exit code in sight decides.
+    const counts = found.length > 1 && sharesOutput(raw.command) ? undefined : worst(found)
     const isRun = kind === 'test' || kind === 'build'
     // A hidden exit code leaves only the counts, and only when they are the run's own.
     const isHidden = isRun && isMasked(raw.command) && (!counts || !countsAreItsOwn(raw.command))

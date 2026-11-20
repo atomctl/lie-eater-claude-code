@@ -7,13 +7,19 @@ import { LINE } from './words'
 
 const tidy = (command: string): string => command.replace(/\s+/g, ' ').trim()
 
-/** A command as a person would name it: no `cd` or variables in front, no pipe to `tail` or `head` behind. */
+/**
+ * A command as a person would name it: no `cd` or variables in front, no pipe
+ * to `tail` or `head` behind, and nothing about where its output goes
+ * (`2>&1`, `> out.txt`): that changes what the referee can read, not which run it is.
+ */
 export function plainCommand(command: string): string {
-  return tidy(command)
+  const named = tidy(command)
     .replace(/^cd \S+ && /, '')
     .replace(/^(?:[A-Za-z_]\w*=\S* )+/, '')
     .replace(/ ?\| ?(tail|head)( [^|;&]*)?$/, '')
-    .replace(/ 2>&1$/, '')
+
+  // Inside quotes a `>` is text (`-k "a > b"`): such a command is left as it is.
+  return /["'][^"']*>[^"']*["']/.test(named) ? named : named.replace(/ ?(?:[0-9]|&)?>>? ?(?:&[0-9]|[^\s|;&]+)/g, '')
 }
 
 /** A command reduced for comparing: also without a runner in front, and `npm run test` as `npm test`. */

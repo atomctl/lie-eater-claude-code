@@ -3,7 +3,7 @@ import type { Bet, Ledger, Ruling, Terms, ToolRecord } from '../../types'
 import { betText, score, youLine } from './bets'
 import { openDebt, repoLine, streak } from './ledger'
 import { isKept } from './terms'
-import { VOICE, rulingText, termsText } from './words'
+import { VOICE, rulingText, termsText, verdictOf } from './words'
 
 export type Tone = 'title' | 'plain' | 'good' | 'bad' | 'quiet'
 export type Row = { text: string; tone: Tone }
@@ -35,6 +35,12 @@ const toneOf = (line: string): Tone =>
           ? 'quiet'
           : 'plain'
 
+const END_ROW: Record<ReturnType<typeof verdictOf>, Row> = {
+  kept: { text: VOICE.kept, tone: 'good' },
+  broken: { text: VOICE.broken, tone: 'bad' },
+  unproven: { text: VOICE.unproven, tone: 'quiet' },
+}
+
 /** The referee's part of the pane: who is present, the rules, the newest ruling. */
 export function refereeRows(game: Terms | null, ruling: Ruling | undefined, columns: number, number?: number): Row[] {
   if (game === null) {
@@ -62,7 +68,7 @@ export function refereeRows(game: Terms | null, ruling: Ruling | undefined, colu
     } else {
       rows.push(...lines.map((text): Row => ({ text, tone: toneOf(text) })))
       if (ruling.lie) rows.push({ text: VOICE.lie, tone: 'bad' })
-      if (ruling.final) rows.push(ruling.met ? { text: VOICE.kept, tone: 'good' } : { text: VOICE.broken, tone: 'bad' })
+      if (ruling.final) rows.push(END_ROW[verdictOf(ruling.lines)])
     }
   }
 

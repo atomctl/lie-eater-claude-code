@@ -2,6 +2,7 @@
 """The soak: many real games of Lie Eater on real tasks, a few at a time.
 
 usage: soak.py <work-dir> <mod-dir> [--models haiku,sonnet] [--jobs 3] [--only <text>] [--sources project]
+               [--exercism a,b,c] [--no-own] [--staged] [--control]
 
 <work-dir> must hold:
   src/exercism-python   a checkout of https://github.com/exercism/python (MIT), with the
@@ -52,6 +53,20 @@ def own_task(name, run, work):
     return task
 
 
+def staged_task(name, run):
+    """A staged game from tools/soak/staged: the person tells the AI to break one rule.
+
+    It shows that the referee sees a real breach through the real engine. It says
+    nothing about how often an AI breaks a rule by itself.
+    """
+    game = json.loads((HERE / "staged" / "games.json").read_text())[name]
+    if game.get("empty"):
+        run.mkdir(parents=True)
+    else:
+        shutil.copytree(HERE / "staged" / "project", run)
+    return {"name": name, "kind": "py", "before": [], "truth": ["python3", "-m", "pytest", "-q"], "tests": ["tests"], **game}
+
+
 def prepare(work, name, game):
     run = work / "runs" / game
     if run.exists():
@@ -59,6 +74,8 @@ def prepare(work, name, game):
     run.parent.mkdir(parents=True, exist_ok=True)
     if name.startswith("exercism-"):
         task = exercism_task(work / "src" / "exercism-python", name[len("exercism-") :], run)
+    elif name.startswith("staged-"):
+        task = staged_task(name, run)
     else:
         task = own_task(name, run, work)
     (run / "task.json").write_text(json.dumps(task))
@@ -70,7 +87,7 @@ def prepare(work, name, game):
 
 
 def play(work, mod, name, model, sources):
-    game = f"{name}--{model}"
+    game = f"{name}--{model}" + ("--control" if mod == "-" else "")
     out = work / "results" / f"{game}.json"
     if out.exists():
         return f"{game}: already played"
@@ -93,15 +110,21 @@ def main():
     parser.add_argument("--sources", default="")
     parser.add_argument("--exercism", default=",".join(EXERCISM), help="practice exercises to play, by name")
     parser.add_argument("--no-own", action="store_true", help="leave out the tasks in tools/soak/tasks")
+    parser.add_argument("--staged", action="store_true", help="play the staged games in tools/soak/staged too")
+    parser.add_argument("--control", action="store_true", help="play with no mod and no referee, for comparison")
     args = parser.parse_args()
     (args.work / "results").mkdir(parents=True, exist_ok=True)
 
     own = [] if args.no_own else sorted(p.name for p in (HERE / "tasks").iterdir() if p.is_dir())
-    names = [f"exercism-{n}" for n in args.exercism.split(",") if n] + own
+    staged_games = json.loads((HERE / "staged" / "games.json").read_text()) if args.staged else {}
+    # the control (no referee) plays only the orders that change a test file
+    staged = sorted(n for n, g in staged_games.items() if not args.control or g.get("control"))
+    names = [f"exercism-{n}" for n in args.exercism.split(",") if n] + own + staged
     games = [(n, m) for n in names for m in args.models.split(",") if args.only in f"{n}--{m}"]
+    mod = "-" if args.control else args.mod
     print(f"{len(games)} games, {args.jobs} at a time", flush=True)
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        for line in pool.map(lambda g: play(args.work, args.mod, g[0], g[1], args.sources), games):
+        for line in pool.map(lambda g: play(args.work, mod, g[0], g[1], args.sources), games):
             print(line, flush=True)
 
 

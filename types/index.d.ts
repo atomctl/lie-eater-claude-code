@@ -36,7 +36,8 @@ export type Terms = {
   otherRun?: { record: number; command: string }   // the newest test run that was not the verdict command
 }
 export type TermId = 'verdict' | 'asserts' | 'tests' | 'skips' | 'numbers'
-export type RulingLine = { term: TermId; pass: boolean; plain: string; detail: string; why?: string; soft?: true }   // soft: a note, never breaks the game
+export type RulingLine = { term: TermId; pass: boolean; plain: string; detail: string; why?: string; soft?: true; unclear?: true }
+// soft: a note, never breaks the game · unclear: the referee could not see, so the rule is neither kept nor broken
 export type Ruling = {
   id: number; termsId: number; turn: number; at: number
   lines: RulingLine[]; met: boolean

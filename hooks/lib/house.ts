@@ -22,12 +22,12 @@ import {
   repay,
   streak,
 } from './ledger'
-import { projectFiles, projectNames } from './project'
+import { inProject, projectFiles, projectNames } from './project'
 import { cardSvg } from './card'
 import { CARD_SVG, RECEIPTS_JSON, RECEIPTS_MD, buildReceipt, receiptToMarkdown } from './receipts'
 import { META_START, SHAPE } from './state'
 import { detectVerdict, packageTestScript, summon } from './terms'
-import { VOICE } from './words'
+import { VOICE, verdictOf } from './words'
 
 // Each file that touches state declares its own atoms (see state.ts).
 const records = atom({ plugin: 'lie-eater', key: 'records' } as const, [], { shape: SHAPE.records })
@@ -53,7 +53,7 @@ async function change($: EngineInterface, fn: (l: Ledger) => Ledger): Promise<Le
     return next
   })
   // A folder that cannot be written to must not stop a ruling: the session keeps its copy.
-  await $.fs.write(LEDGER_PATH, `${JSON.stringify(next, null, 2)}\n`).catch(() => undefined)
+  await $.fs.write(await inProject($, LEDGER_PATH), `${JSON.stringify(next, null, 2)}\n`).catch(() => undefined)
 
   return next
 }
@@ -79,7 +79,7 @@ export async function refreshStatus($: EngineInterface): Promise<void> {
     statusLine({
       mood: moodOf({
         hasOpenBet: all.some(b => b.state === 'open'),
-        isBroken: lastOfGame !== undefined && !lastOfGame.met && lastOfGame.overruled !== true,
+        isBroken: lastOfGame !== undefined && verdictOf(lastOfGame.lines) === 'broken' && lastOfGame.overruled !== true,
         isKept: last !== undefined && last.final && last.met,
         ...(flag === undefined ? {} : { flag }),
         debt,
@@ -99,12 +99,12 @@ export async function refreshStatus($: EngineInterface): Promise<void> {
  * command can be found, so the flag works with no summon.
  */
 export async function loadLedger($: EngineInterface, cwd = ''): Promise<void> {
-  const text = await $.fs.read(LEDGER_PATH).catch(() => undefined)
+  const text = await $.fs.read(await inProject($, LEDGER_PATH)).catch(() => undefined)
 
   // A file this version cannot read (a newer version, a merge conflict) is the
   // person's history: it is kept aside before anything is written over it.
   if (text !== undefined && text.trim() !== '' && !isLedgerText(text)) {
-    await $.fs.write(LEDGER_ASIDE, text).catch(() => undefined)
+    await $.fs.write(await inProject($, LEDGER_ASIDE), text).catch(() => undefined)
   }
 
   const found = parseLedger(text)
@@ -115,7 +115,7 @@ export async function loadLedger($: EngineInterface, cwd = ''): Promise<void> {
     $.ui.toast(`${VOICE.remembers} Debt: ${debt}.`)
   }
 
-  const remote = gitRemote(await $.fs.read('.git/config').catch(() => undefined))
+  const remote = gitRemote(await $.fs.read(await inProject($, '.git/config')).catch(() => undefined))
   const number = refereeNumber(remote ?? cwd.split('/').filter(part => part !== '').at(-1) ?? '')
   await update($, meta, m => ({ ...m, ...(number === undefined ? {} : { referee: number }) }))
 
@@ -160,14 +160,14 @@ export async function recordBet($: EngineInterface, b: Bet): Promise<void> {
  * Takes a ruling into the ledger: a lie or a game that ends broken makes a
  * debt, a game that ends kept repays all of it. The house does not collect
  * when nothing was played (`worked` false), or when the only broken rule is
- * tests that already failed before the game (`onlyOld`): such a game counts
- * as neither kept nor broken. For a final ruling, hands back the debt before
+ * tests that already failed before the game, or the referee could not read the
+ * test run (`noFoul`): such a game counts as neither kept nor broken. For a final ruling, hands back the debt before
  * this game and now, when the two differ.
  */
 export async function recordRuling(
   $: EngineInterface,
   game: Terms,
-  r: { lines: readonly RulingLine[]; met: boolean; lie: boolean; final: boolean; worked: boolean; onlyOld: boolean },
+  r: { lines: readonly RulingLine[]; met: boolean; lie: boolean; final: boolean; worked: boolean; noFoul: boolean },
 ): Promise<[number, number] | undefined> {
   if ((!r.lie && !r.final) || game.demo === true) {
     return undefined
@@ -176,7 +176,7 @@ export async function recordRuling(
   const before = openDebt(await read($, ledger)).filter(d => d.termsAt !== game.at).length
   const at = await today($)
   const failed = r.lines.filter(l => !l.pass && !l.soft).map(l => l.term)
-  const collects = !r.met && r.worked && !r.onlyOld
+  const collects = !r.met && r.worked && !r.noFoul
   const next = await change($, l => {
     const charged = collects ? addDebt(l, game, failed, at) : l
 
@@ -212,11 +212,11 @@ export async function writeReceipts($: EngineInterface): Promise<void> {
     createdAt: await today($),
   })
   // A folder that cannot be written to must not stop a ruling.
-  await $.fs.write(RECEIPTS_JSON, `${JSON.stringify(receipt, null, 2)}\n`).catch(() => undefined)
-  await $.fs.write(RECEIPTS_MD, receiptToMarkdown(receipt)).catch(() => undefined)
+  await $.fs.write(await inProject($, RECEIPTS_JSON), `${JSON.stringify(receipt, null, 2)}\n`).catch(() => undefined)
+  await $.fs.write(await inProject($, RECEIPTS_MD), receiptToMarkdown(receipt)).catch(() => undefined)
   const { referee } = await read($, meta)
   const card = cardSvg(receipt, { ...(referee === undefined ? {} : { referee }), streak: streak(await read($, ledger)) })
-  await $.fs.write(CARD_SVG, card).catch(() => undefined)
+  await $.fs.write(await inProject($, CARD_SVG), card).catch(() => undefined)
 }
 
 /**

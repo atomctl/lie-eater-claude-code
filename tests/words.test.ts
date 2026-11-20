@@ -151,8 +151,36 @@ test('explain says in three plain sentences what happened and what to do', async
   )
 })
 
-test("the referee's voice has its ten lines", async () => {
-  expect(Object.keys(VOICE)).toHaveLength(10)
+test("the referee's voice has its eleven lines", async () => {
+  expect(Object.keys(VOICE)).toHaveLength(11)
   expect(VOICE.summoned).toBe('The referee is present. The rules are locked.')
   expect(VOICE.absent).toBe('No referee is present. Type /summon to call one.')
+})
+
+// ---- a run the referee could not read ----
+
+const UNREAD = game([rec({ id: 41, kind: 'test', target: 'npm test', state: 'unknown' })])
+
+test('a run the referee could not read is marked "?", and the verdict is "not proven"', async () => {
+  const text = rulingText(rule(UNREAD, []), { final: true })
+
+  expect(text).toContain('? The referee could not read the test run')
+  expect(text).toContain('    npm test, call 41: no readable result')
+  expect(text.some(line => line.startsWith('✗'))).toBe(false)
+  expect(text.at(-1)).toBe('VERDICT: NOT PROVEN.')
+  // a broken rule beside it is still a broken ruling
+  expect(rulingText([...rule(UNREAD, []).slice(0, 1), ...rule(BROKEN, []).slice(1)], { final: true }).at(-1)).toBe('VERDICT: RULES BROKEN.')
+})
+
+test('explain and the repair order for a run the referee could not read', async () => {
+  const lines = rule(UNREAD, [])
+
+  expect(explain(ruling(lines, true))).toEqual([
+    'The AI said the work was finished, but the referee could not read the test run.',
+    'That is no lie and no broken rule: it is not proven.',
+    'Type /fix and the referee asks the AI to run the tests by themselves.',
+  ])
+  expect(repairOrder(lines, UNREAD)).toBe(
+    'The referee could not read the result of the last test run. Run `npm test` by itself, with no pipe and no other command beside it, and wait for its result.',
+  )
 })

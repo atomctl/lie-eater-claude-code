@@ -8,11 +8,11 @@ import type { Ruling, Terms, ToolRecord } from '../../types'
 import { recordRuling, refreshStatus, writeReceipts } from './house'
 import { DEMO_DIR, DEMO_FILES, DEMO_INTRO, DEMO_PROMPT, DEMO_VERDICT } from './demo'
 import { checkNumbers } from './numbers'
-import { projectFiles, projectNames } from './project'
+import { inProject, projectFiles, projectNames } from './project'
 import { CARD_SVG, RECEIPTS_JSON } from './receipts'
 import { META_START, SHAPE } from './state'
 import { detectVerdict, isKept, packageTestScript, plainCommand, rule, summon, track } from './terms'
-import { VOICE, explain, isOldFailure, repairOrder, rulingText, termsText } from './words'
+import { VOICE, explain, isNoFoul, repairOrder, rulingText, termsText, verdictOf } from './words'
 
 export const PANE = 'lie-eater'
 
@@ -41,12 +41,13 @@ const FIRST_TESTS =
 const ASKED_FOR_TESTS = 'The referee asked the AI for your first tests. Type /summon when they exist.'
 const GAME_ENDS = 'The game ends by itself when the rules are kept. /rule ends it now.'
 const NOTHING_TO_FIX = 'Nothing to fix.'
+const ASKED_TO_RUN = 'The referee asked the AI to run the tests by themselves.'
 const SENT_BACK_ENOUGH =
   'The referee has sent the AI back 3 times. Read /explain, or type /overrule if a rule is wrong for this task.'
 const NO_GAME = 'No game has been ruled yet. Type /summon before you give the AI a task.'
 
-const onlyOldFailures = (lines: readonly Ruling['lines'][number][]): boolean =>
-  lines.filter(l => !l.pass && !l.soft).every(isOldFailure)
+// No foul: every rule that is not kept is one the agent neither broke nor hid.
+const noFoul = (lines: readonly Ruling['lines'][number][]): boolean => lines.filter(l => !l.pass && !l.soft).every(isNoFoul)
 const inPlay = (t: Terms | null): t is Terms => t !== null && t.state === 'in play'
 const brokenRules = (r: Pick<Ruling, 'lines'>): number => r.lines.filter(l => !l.pass && !l.soft).length
 
@@ -158,7 +159,7 @@ async function enter($: EngineInterface, game: Terms): Promise<void> {
 /** `/summon demo`: a tiny project with one failing test, and a whole game on it. */
 async function summonDemo($: EngineInterface): Promise<string> {
   for (const [name, text] of Object.entries(DEMO_FILES)) {
-    await $.fs.write(`${DEMO_DIR}/${name}`, text)
+    await $.fs.write(await inProject($, `${DEMO_DIR}/${name}`), text)
   }
 
   const { termsSeq } = await read($, meta)
@@ -224,10 +225,11 @@ export async function ruleTurn($: EngineInterface, answer: string): Promise<void
 
   const final = done === true && met
   // Tests that failed before the game and still fail are a broken rule, but
-  // "done" with them is not a lie: the agent hid nothing.
-  const onlyOld = onlyOldFailures(lines)
-  const lie = done === true && !met && !onlyOld
-  const debt = await recordRuling($, game, { lines, met, lie, final, worked, onlyOld })
+  // "done" with them is not a lie: the agent hid nothing. And a run the referee
+  // could not read proves nothing either way.
+  const clear = noFoul(lines)
+  const lie = done === true && !met && !clear
+  const debt = await recordRuling($, game, { lines, met, lie, final, worked, noFoul: clear })
   const ruling = await addRuling($, {
     termsId: game.id,
     lines,
@@ -249,6 +251,8 @@ export async function ruleTurn($: EngineInterface, answer: string): Promise<void
   if (ruling.lie) {
     $.ui.toast(`LIE EATEN. Rules broken: ${brokenRules(ruling)}.`)
     thump($)
+  } else if (done === true && verdictOf(lines) === 'unproven') {
+    $.ui.toast('NOT PROVEN. The referee could not read the test run.')
   }
 
   if (ruling.final) {
@@ -270,7 +274,7 @@ export async function ruleNow($: EngineInterface): Promise<string> {
   const lines = rule(game, fromNowhere)
   const met = isKept(lines)
   const worked = game.lastCodeEdit > game.startRecord || game.lastGatedRun > game.startRecord
-  const debt = await recordRuling($, game, { lines, met, lie: false, final: true, worked, onlyOld: onlyOldFailures(lines) })
+  const debt = await recordRuling($, game, { lines, met, lie: false, final: true, worked, noFoul: noFoul(lines) })
   const shown = debt === undefined ? {} : { debt }
   await addRuling($, { termsId: game.id, lines, met, fromNowhere, saidDone: null, final: true, lie: false, ...shown })
   await endGame($, game, met ? 'met' : 'ended')
@@ -300,6 +304,11 @@ export async function fix($: EngineInterface): Promise<string> {
 
   await update($, terms, t => (t !== null && t.id === game.id ? { ...t, fixes: t.fixes + 1 } : t))
   sendAsPerson($, order)
+
+  if (verdictOf(lines) === 'unproven') {
+    return ASKED_TO_RUN
+  }
+
   const n = brokenRules({ lines })
 
   return `The referee sent the AI back to repair ${n} broken ${n === 1 ? 'rule' : 'rules'}. If a rule is wrong for this task, type /overrule.`

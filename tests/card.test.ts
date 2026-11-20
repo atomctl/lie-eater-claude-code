@@ -8,7 +8,7 @@ import type { Bet, Ruling, Terms } from '../types'
 import { rec } from './helpers'
 
 const NOW = '2026-11-20T12:00:00.000Z'
-const play = (verdict: string, state: 'clean' | 'failed'): Terms =>
+const play = (verdict: string, state: 'clean' | 'failed' | 'unknown'): Terms =>
   [rec({ id: 3, kind: 'test', target: verdict, state })].reduce(track, summon(verdict, { id: 1, at: 5000 }, []))
 const ruling = (game: Terms, more: Partial<Ruling> = {}): Ruling => {
   const lines = rule(game, [])
@@ -101,4 +101,14 @@ test('a card with no referee number and no finished game before it', async () =>
 
   expect(svg).not.toContain('Referee No.')
   expect(svg).not.toContain('Clean games in a row')
+})
+
+test('the card of a game the referee could not read says "not proven", not "broken"', async () => {
+  const game = play('npm test', 'unknown')
+  const svg = card(game, ruling(game))
+
+  expect(svg).toContain('NOT PROVEN')
+  expect(svg).toContain('The referee could not read the test run')
+  expect(svg).not.toContain('RULES BROKEN')
+  expect(svg).not.toContain('✗')
 })

@@ -58,49 +58,62 @@ export const isMasked = (command: string): boolean => /\||;\s*\S/.test(unquoted(
 
 // Words of a test summary. A real test command does not hold them; `echo "12 passed"` does.
 const SUMMARY_WORDS = /\b(passed|failed|passing|failing)\b|\bTests:/i
-// After a pipe, only these keep the run's own lines as they are (they cut by position, or pass through).
+// After a pipe, only these keep the run's own lines as they are (they cut by position, or pass through)...
 const KEEPS_LINES = /^(?:tail|head|tee|cat)\b/
-// Beside the run, these can print any text, or run any code: their output could pose as the run's.
-const PRINTS_ANYTHING =
-  /^(?:cat|less|more|bat|sed|awk|grep|rg|python3?|node|ruby|perl|bash|sh|zsh|source|\.|xargs|printf|curl|wget|jq)\b/
+// ...unless they are told to keep none.
+const KEEPS_NONE = /^(?:tail|head)\b.*\s-(?:[nc]\s*)?0\b/
+// Output that goes to a file: `> f`, `>> f`, `1> f`, `&> f` (not `2> f`, not `2>&1`).
+const TO_FILE = /(?:^|[^0-9&>])[1&]?>>?\s*[^&\s>]/
+// Beside the run, these run code of their own: their output could be anything.
+const RUNS_CODE = /^(?:python3?|node|ruby|perl|bash|sh|zsh|source|\.|xargs|printf|curl|wget)\b/
+// Beside the run, these print the text of files: a summary in the output may be theirs.
+const PRINTS_FILES = /^(?:cat|less|more|bat|sed|awk|grep|rg|jq|head|tail|nl|git\s+(?:diff|show|log))\b/
 
-// The commands of a chain with the operator that stands before each one.
-function links(command: string): { op: string; step: string }[] {
-  const pieces = unquoted(command).split(/(&&|\|\||[;|])/)
-  const out: { op: string; step: string }[] = []
+// The chain as pipelines, each a list of commands: `a | b && c` is [[a, b], [c]].
+const pipelines = (command: string): string[][] =>
+  unquoted(command)
+    .split(/&&|\|\||;/)
+    .map(line => line.split('|').map(step => step.replace(/\s+/g, ' ').trim().replace(WRAPPERS, '')).filter(step => step !== ''))
+    .filter(line => line.length > 0)
 
-  for (let i = 0; i < pieces.length; i += 2) {
-    const step = (pieces[i] ?? '').replace(/\s+/g, ' ').trim().replace(WRAPPERS, '')
-    if (step !== '') out.push({ op: i === 0 ? '' : (pieces[i - 1] ?? ''), step })
-  }
-
-  return out
-}
+const isRun = (step: string): boolean => kindOf(step) === 'test' || kindOf(step) === 'build'
 
 /**
  * When the exit code is hidden, the counts in the output decide. But only if
- * the output is the run's own:
+ * the run's own output reaches the referee whole:
  *  - the command holds no summary words itself (`; echo "12 passed"`);
  *  - the run's output is not sent to a file;
- *  - a pipe leads only to `tail`, `head`, `tee` or `cat`;
- *  - no command beside the run can print any text it likes (`cat old.txt`, a script).
- * Read-only commands beside the run (`git status`, `ls`, `wc`) are fine: an
- * honest agent chains them all the time.
+ *  - from the run, a pipe leads only to `tail`, `head`, `tee` or `cat`, and not to `tail -0`;
+ *  - no command beside the run runs code of its own (a script can print anything).
+ * Commands that read beside the run (`cat cart.py`, `git status`, `ls`) are
+ * fine: an honest agent chains them all the time. See `sharesOutput` for the
+ * one case where their text matters.
  */
 export function countsAreItsOwn(command: string): boolean {
   if (SUMMARY_WORDS.test(command)) {
     return false
   }
 
-  return links(command).every(({ op, step }) => {
-    const kind = kindOf(step)
+  return pipelines(command).every(line => {
+    const at = line.findIndex(isRun)
 
-    if (kind === 'test' || kind === 'build') {
-      return !/(^|[^0-9&>])>>?\s*[^&\s]/.test(step) // its own output goes to a file
+    if (at === -1) {
+      return !line.some(step => RUNS_CODE.test(step))
     }
 
-    return op === '|' ? KEEPS_LINES.test(step) : !PRINTS_ANYTHING.test(step)
+    const own = line.slice(at)
+
+    return !own.some(step => TO_FILE.test(step)) && own.slice(1).every(step => KEEPS_LINES.test(step) && !KEEPS_NONE.test(step))
   })
+}
+
+/**
+ * Does a command beside the run print the text of files? Such a file can hold
+ * a summary line of its own (a README with sample output, the tests of a test
+ * tool). The counts are then the run's only when the output holds one summary.
+ */
+export function sharesOutput(command: string): boolean {
+  return pipelines(command).some(line => !line.some(isRun) && line.some(step => PRINTS_FILES.test(step)))
 }
 
 // Does this git command change files in the working tree?

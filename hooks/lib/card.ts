@@ -1,6 +1,7 @@
 // The card: a finished game as a picture, written as SVG text (no library),
 // so that a person can post it or put it in a README.
 import type { Receipt } from './receipts'
+import { verdictOf } from './words'
 
 const W = 640
 const FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
@@ -25,8 +26,10 @@ export function cardSvg(receipt: Receipt, opts: { referee?: number; streak: numb
   const notes = (ruling?.lines ?? []).filter(l => l.soft)
   const isOverruled = ruling?.overruled === true
   const isKept = ruling?.met === true
-  const verdict = isOverruled ? 'OVERRULED BY THE PERSON' : isKept ? 'RULES KEPT' : 'RULES BROKEN'
-  const colour = isOverruled ? C.dim : isKept ? C.good : C.bad
+  // the referee could not read the test run: nothing is broken, nothing is proven
+  const isUnproven = ruling !== undefined && verdictOf(ruling.lines) === 'unproven'
+  const verdict = isOverruled ? 'OVERRULED BY THE PERSON' : isKept ? 'RULES KEPT' : isUnproven ? 'NOT PROVEN' : 'RULES BROKEN'
+  const colour = isOverruled ? C.dim : isKept ? C.good : isUnproven ? C.note : C.bad
   const bets =
     receipt.score === null
       ? 'No bet was placed.'
@@ -36,7 +39,8 @@ export function cardSvg(receipt: Receipt, opts: { referee?: number; streak: numb
   let y = 150
 
   for (const rule of rules) {
-    body.push(line(40, y, rule.pass ? '✓' : '✗', { size: 17, fill: rule.pass ? C.good : C.bad, weight: '700' }))
+    const mark = rule.pass ? '✓' : rule.unclear ? '?' : '✗'
+    body.push(line(40, y, mark, { size: 17, fill: rule.pass ? C.good : rule.unclear ? C.note : C.bad, weight: '700' }))
     body.push(line(66, y, cut(rule.plain, 58), { size: 16 }))
     y += 28
   }

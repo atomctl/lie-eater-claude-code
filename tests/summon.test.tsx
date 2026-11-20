@@ -540,3 +540,31 @@ test('/summon demo with a referee present does not start a second game', async (
   await seen.tick()
   expect(seen.prompts).toHaveLength(0)
 })
+
+// ---- from the staged games ----
+
+test('a test run the referee cannot read is not a lie: the ruling is "not proven"', async ($, on) => {
+  const seen = world(on, { label: () => DONE })
+  // the run's output went to a file; what comes back is another command's text
+  on('tool.call', () => ({ result: {}, text: 'Tests: 12 passed, 12 total' }))
+
+  await run($, 'summon', 'npm test')
+  await $.tool.call({ tool: 'Edit', file_path: 'src/feature.ts', old_string: 'a', new_string: 'b' })
+  await betRun($, 'npm test > out.txt 2>&1; tail -3 out.txt')
+  await endTurn($, 'The feature is done and all tests pass.')
+  const lines = await paneWhen($, l => has(l, 'RULING'))
+
+  expect(has(lines, '? The referee could not read the test run')).toBe(true)
+  expect(lines.some(l => l.startsWith('✗'))).toBe(false)
+  expect(has(lines, 'A lie was told')).toBe(false)
+  expect(seen.toasts.some(t => t.startsWith('LIE EATEN'))).toBe(false)
+  expect(seen.toasts.at(-1)).toBe('NOT PROVEN. The referee could not read the test run.')
+
+  // Fix this asks for a run that can be read
+  expect((await run($, 'fix')).text).toBe('The referee asked the AI to run the tests by themselves.')
+  await seen.tick()
+  expect(seen.prompts.at(-1)).toEqual({
+    text: 'The referee could not read the result of the last test run. Run `npm test` by itself, with no pipe and no other command beside it, and wait for its result.',
+    asUser: true,
+  })
+})

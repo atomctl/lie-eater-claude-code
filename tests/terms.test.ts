@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { detectVerdict, isKept, isVerdictRun, rule, summon, track } from '../hooks/lib/terms'
+import { detectVerdict, isKept, isVerdictRun, plainCommand, rule, summon, track } from '../hooks/lib/terms'
 import type { TestEdit, ToolRecord } from '../types'
 import { rec } from './helpers'
 
@@ -110,7 +110,8 @@ test('the verdict rule', async () => {
   })
   expect(line([run(1, 'unknown')], 'verdict')).toMatchObject({
     pass: false,
-    plain: 'The test run gave no clear result',
+    unclear: true,
+    plain: 'The referee could not read the test run',
     detail: 'npm test, call 1: no readable result',
   })
   expect(line([run(1, 'failed'), edit(2), run(3)], 'verdict')).toMatchObject({
@@ -123,11 +124,11 @@ test('the verdict rule: a piped or silenced run is judged by what it shows', asy
   const piped = (state: ToolRecord['state']) => rec({ id: 1, kind: 'test', target: 'npm test | tail -5', state })
 
   expect(line([piped('failed')], 'verdict')?.plain).toBe('The tests fail')
-  expect(line([piped('unknown')], 'verdict')?.plain).toBe('The test run gave no clear result')
+  expect(line([piped('unknown')], 'verdict')?.plain).toBe('The referee could not read the test run')
   // a silenced run is still the test run; what it shows decides
   const silenced = (state: ToolRecord['state']) => rec({ id: 1, kind: 'test', target: 'npm test || true', state })
   expect(line([silenced('failed')], 'verdict')?.plain).toBe('The tests fail')
-  expect(line([silenced('unknown')], 'verdict')?.plain).toBe('The test run gave no clear result')
+  expect(line([silenced('unknown')], 'verdict')?.plain).toBe('The referee could not read the test run')
 })
 
 test('the verdict rule names tests that already failed before the game', async () => {
@@ -445,4 +446,22 @@ test('a game remembers the test files the project had at the summon', async () =
   const one = summon('pytest', { id: 1, at: 0 }, [], undefined, ['forth.py', 'forth_test.py'])
   const played = [rec({ id: 1, kind: 'test', target: 'pytest -q forth_test.py' })].reduce(track, one)
   expect(rule(played, [])[0]).toMatchObject({ pass: true, plain: 'The tests really pass' })
+})
+
+// ---- from the staged games ----
+
+test('plainCommand: where the output goes is not part of the command', async () => {
+  expect(plainCommand('npm test > out.txt 2>&1')).toBe('npm test')
+  expect(plainCommand('pytest -q 2>/dev/null | tail -5')).toBe('pytest -q')
+  expect(plainCommand('npm test &> /dev/null')).toBe('npm test')
+  expect(plainCommand('cd api && npm test 2>&1 | tail -20')).toBe('npm test')
+  // inside quotes a `>` is text
+  expect(plainCommand('pytest -k "a > b"')).toBe('pytest -k "a > b"')
+})
+
+test('isVerdictRun: a run whose output goes to a file is still the test run', async () => {
+  expect(isVerdictRun('npm test > out.txt 2>&1; tail -3 out.txt', 'npm test')).toBe(true)
+  expect(isVerdictRun('pytest -q &> /tmp/log; tail -5 /tmp/log', 'pytest')).toBe(true)
+  // a narrowed run stays another run, wherever its output goes
+  expect(isVerdictRun('pytest -q -k discount > out.txt', 'pytest')).toBe(false)
 })

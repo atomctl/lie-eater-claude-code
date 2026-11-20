@@ -6,6 +6,7 @@ import type { EngineInterface } from 'claude-code'
 import type { Bet, Ledger, Ruling, Terms, ToolRecord } from '../../types'
 import { appendRecord, nextMeta, toRawCall } from './intake'
 import { EMPTY_LEDGER } from './ledger'
+import { projectRoot } from './project'
 import { META_START, SHAPE } from './state'
 import { plainCommand, summon, track } from './terms'
 
@@ -23,7 +24,7 @@ export async function remember(
   input: Record<string, unknown>,
   ran: { text?: string; isError?: boolean; result?: unknown },
 ): Promise<ToolRecord | undefined> {
-  const raw = toRawCall(input, ran)
+  const raw = toRawCall(input, ran, await projectRoot($))
   const { turn } = await read($, meta)
   const at = await $.clock.now()
   let made: ToolRecord | undefined

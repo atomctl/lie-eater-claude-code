@@ -49,6 +49,8 @@ export type World = {
   sound?: () => Promise<void>
   /** What opening the pane does; left out, it is placed. */
   open?: () => void
+  /** The project's root, absolute. Left out, the engine names none. */
+  root?: string
 }
 
 export function world(on: On, opts: World = {}): Seen {
@@ -79,6 +81,13 @@ export function world(on: On, opts: World = {}): Seen {
     return { value: undefined }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.root', () => {
+    if (opts.root === undefined) {
+      throw new Error('no project root')
+    }
+
+    return { value: opts.root }
+  })
   on('ui.open', () => {
     seen.opens += 1
     opts.open?.()

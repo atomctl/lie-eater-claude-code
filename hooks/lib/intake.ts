@@ -13,7 +13,13 @@ const text = (from: Record<string, unknown>, key: string): string | undefined =>
   typeof from[key] === 'string' ? (from[key] as string) : undefined
 
 /** `input` is a tool.call event's input; `ran` is what the call resolved to. */
-export function toRawCall(input: Record<string, unknown>, ran: Ran): RawCall {
+// A file of the project is named by its path there. A folder above the project
+// (`~/tests/calc`) must not make its files test files, and a ruling must not
+// show where the person keeps the project.
+const inside = (root: string, path: string): string =>
+  root !== '' && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
+
+export function toRawCall(input: Record<string, unknown>, ran: Ran, root = ''): RawCall {
   const tool = String(input.tool)
   const result =
     ran.result !== null && typeof ran.result === 'object' ? (ran.result as Record<string, unknown>) : {}
@@ -22,7 +28,7 @@ export function toRawCall(input: Record<string, unknown>, ran: Ran): RawCall {
   const path = text(input, 'file_path') ?? text(input, 'notebook_path')
 
   if (agentId !== undefined) raw.agentId = agentId
-  if (path !== undefined) raw.path = path
+  if (path !== undefined) raw.path = inside(root, path)
 
   if (tool === 'Bash') {
     raw.command = text(input, 'command') ?? ''

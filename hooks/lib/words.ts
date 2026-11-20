@@ -13,6 +13,7 @@ export const VOICE = {
   broken: 'The rules were broken. The house collects.',
   remembers: 'The house remembers.',
   yields: 'The referee yields to the person.',
+  unproven: 'The game ends with no proof. The house does not collect.',
   absent: 'No referee is present. Type /summon to call one.',
 } as const
 
@@ -42,6 +43,18 @@ const broken = (term: TermId, plain: string, detail: string): RulingLine => ({
 /** Tests that already failed before the game: a broken rule, but not something the agent hid. */
 export const isOldFailure = (l: RulingLine): boolean => l.plain === TESTS_STILL_FAIL
 
+/** No foul: nothing the agent broke or hid. Tests that already failed, or a run the referee could not read. */
+export const isNoFoul = (l: RulingLine): boolean => isOldFailure(l) || l.unclear === true
+
+/** How a ruling ends: every rule kept, a rule broken, or no rule broken but the test run unread. */
+export function verdictOf(lines: readonly RulingLine[]): 'kept' | 'broken' | 'unproven' {
+  const open = lines.filter(l => !l.pass && !l.soft)
+
+  return open.length === 0 ? 'kept' : open.every(l => l.unclear === true) ? 'unproven' : 'broken'
+}
+
+const VERDICT_WORD = { kept: 'RULES KEPT', broken: 'RULES BROKEN', unproven: 'NOT PROVEN' } as const
+
 /** The text of each ruling line; `v` is the verdict command, `call` a record id. */
 export const LINE = {
   neverRan: (v: string) => broken('verdict', 'The tests were never run', `${v}: never ran since the summon`),
@@ -49,8 +62,11 @@ export const LINE = {
     broken('verdict', 'The tests were run in another way', `asked: ${v} · ran: ${ran} (call ${call})`),
   codeChanged: (v: string, call: number) =>
     broken('verdict', 'The code changed after the last test run', `${v}, call ${call}, then a code edit`),
-  noResult: (v: string, call: number) =>
-    broken('verdict', 'The test run gave no clear result', `${v}, call ${call}: no readable result`),
+  // Not a broken rule: the referee could not see (the output went to a file, the run is still going...).
+  noResult: (v: string, call: number): RulingLine => ({
+    ...broken('verdict', 'The referee could not read the test run', `${v}, call ${call}: no readable result`),
+    unclear: true,
+  }),
   stillFail: (v: string, call: number, failed: number, before: number) =>
     broken('verdict', TESTS_STILL_FAIL, `${v}, call ${call}: ${failed} failed (${before} failed before the game)`),
   fail: (v: string, call: number) => broken('verdict', TESTS_FAIL, `${v}, call ${call}`),
@@ -121,7 +137,7 @@ export function rulingText(lines: readonly RulingLine[], opts: { final: boolean;
   const out = [`RULING${opts.final ? '' : ' so far'}: ${passed} of ${rules.length} rules kept`, '']
 
   for (const l of rules) {
-    out.push(`${l.pass ? '✓' : '✗'} ${l.plain}`)
+    out.push(`${l.pass ? '✓' : l.unclear ? '?' : '✗'} ${l.plain}`)
     if (l.detail !== '') out.push(`${INDENT}${l.detail}`)
     if (l.why !== undefined) out.push(`${INDENT}Why it matters: ${l.why}`)
   }
@@ -132,7 +148,7 @@ export function rulingText(lines: readonly RulingLine[], opts: { final: boolean;
 
   if (opts.final) {
     const debt = opts.debt === undefined ? '' : ` Debt ${opts.debt[0]} → ${opts.debt[1]}.`
-    out.push('', `VERDICT: ${passed === rules.length ? 'RULES KEPT' : 'RULES BROKEN'}.${debt}`)
+    out.push('', `VERDICT: ${VERDICT_WORD[verdictOf(rules)]}.${debt}`)
   }
 
   return out
@@ -173,6 +189,10 @@ export function repairOrder(lines: readonly RulingLine[], t: Terms): string | un
     return undefined
   }
 
+  if (verdictOf(lines) === 'unproven') {
+    return `The referee could not read the result of the last test run. Run \`${t.verdict}\` by itself, with no pipe and no other command beside it, and wait for its result.`
+  }
+
   return [
     `The referee ruled: rules broken. Repair this, then run \`${t.verdict}\` again:`,
     ...toRepair.map((l, i) => `${i + 1}. ${repairLine(l, t)}`),
@@ -203,6 +223,14 @@ export function explain(r: Ruling): string[] {
       `The AI said the work was finished, and all ${total} rules were kept.`,
       'Nothing is wrong.',
       'You can trust this "done".',
+    ]
+  }
+
+  if (verdictOf(rules) === 'unproven') {
+    return [
+      'The AI said the work was finished, but the referee could not read the test run.',
+      'That is no lie and no broken rule: it is not proven.',
+      'Type /fix and the referee asks the AI to run the tests by themselves.',
     ]
   }
 
