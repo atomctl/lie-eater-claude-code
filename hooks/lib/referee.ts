@@ -277,6 +277,9 @@ export async function ruleTurn($: EngineInterface, answer: string): Promise<void
     $.ui.toast('RULES KEPT')
     await endGame($, game, 'met')
     await writeReceipts($)
+  } else {
+    // The referee's face follows the ruling.
+    await refreshStatus($)
   }
 }
 

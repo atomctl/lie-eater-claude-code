@@ -617,3 +617,20 @@ test('a test file that was removed and is back is not charged any more', async (
   expect(out.text).toContain('✓ No test was deleted')
   expect(out.text).toContain('VERDICT: RULES KEPT.')
 })
+
+test("the referee's face follows the ruling of a turn, not only the test run", async ($, on) => {
+  const seen = world(on, { label: () => DONE })
+  on('tool.call', passing)
+
+  await run($, 'summon', 'npm test')
+  await $.tool.call({ tool: 'Edit', file_path: 'tests/math.test.ts', old_string: "it('adds', () => {", new_string: "it.skip('adds', () => {" })
+  await betRun($, 'npm test')
+  // the tests pass (with one switched off): the face is pleased until the ruling
+  expect(seen.status.at(-1)?.startsWith('(^_^)')).toBe(true)
+
+  await endTurn($, 'The work is done and all tests pass.')
+  await paneWhen($, l => has(l, 'A lie was told'))
+
+  expect(seen.toasts.at(-1)).toBe('LIE EATEN. Rules broken: 1.')
+  expect(seen.status.at(-1)?.startsWith('(-_-)')).toBe(true)
+})
