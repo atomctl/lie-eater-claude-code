@@ -690,3 +690,26 @@ test('a folder git does not ignore is the project: a full check that writes ther
 
   expect((await reply(done($))).slice(0, 2)).toEqual(['? not checked', 'The project changed after the last full check.'])
 })
+
+// The third rating round (20 Nov, GPT 6.2): a check file inside a folder that git ignores is still a check file.
+test('check files inside a git-ignored folder are still frozen; a root-anchored name is ignored at the root only', async ($, on) => {
+  const opts = project()
+  opts.files['.gitignore'] = 'generated/\n/out\n'
+  opts.files['gen.test.ts'] = MATH
+  opts.files['notes.txt'] = 'a'
+  opts.dirs.deep = { 'generated/tests': ['gen.test.ts'], 'src/out': ['notes.txt'] }
+  world(on, opts)
+  on('tool.call', passing)
+
+  await start($)
+  // a check file under the ignored folder is weakened: seen
+  opts.files['gen.test.ts'] = MATH.replace('toBe(3)', 'toBe(true)')
+  await betRun($, 'npm test')
+  expect((await reply(done($)))[1]).toBe('The AI changed 1 line in the check file generated/tests/gen.test.ts.')
+
+  // `/out` names the root's `out` only: `src/out` is the project, and a change there after the run is seen
+  opts.files['gen.test.ts'] = MATH
+  await betRun($, 'npm test')
+  opts.files['notes.txt'] = 'b, longer'
+  expect((await reply(done($))).slice(0, 2)).toEqual(['? not checked', 'The project changed after the last full check.'])
+})

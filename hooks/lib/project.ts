@@ -34,15 +34,16 @@ export async function projectFiles($: EngineInterface): Promise<Record<string, s
 // (`.git`, `.lie-eater`, `.venv`).
 const NOT_THE_PROJECT = new Set(['node_modules', 'venv', 'env', 'dist', 'build', 'target', 'vendor', '__pycache__', 'coverage', 'htmlcov'])
 
-// The plain names the project's own `.gitignore` lists (`coverage/`, `/out`): what git ignores is
-// output, not the project. A test run that writes there must not make its own result stale.
-const ignoredNames = (text: string): Set<string> =>
-  new Set(
-    text
-      .split('\n')
-      .map(line => line.trim().replace(/^\//, '').replace(/\/$/, ''))
-      .filter(name => /^[\w.@-]+$/.test(name)),
-  )
+// The plain names the project's own `.gitignore` lists: what git ignores is output, not the
+// project. A test run that writes there must not make its own result stale. A name with a slash
+// in front (`/out`) is the root's own; a bare name (`coverage/`) holds at any depth.
+function ignoredNames(text: string): { atRoot: Set<string>; anywhere: Set<string> } {
+  const lines = text.split('\n').map(line => line.trim().replace(/\/$/, ''))
+  const plain = (names: string[]): Set<string> => new Set(names.filter(name => /^[\w.@-]+$/.test(name)))
+
+  return { atRoot: plain(lines.filter(l => l.startsWith('/')).map(l => l.slice(1))), anywhere: plain(lines.filter(l => !l.startsWith('/'))) }
+}
+
 // A project with more folders or files than this, or a folder that cannot be listed, is not read
 // to its end: no fingerprint, and no result better than "not checked".
 const FOLDERS_WALKED = 400
@@ -62,6 +63,8 @@ export async function walk($: EngineInterface, from = ''): Promise<Walked> {
   const names: string[] = []
   const stamps: string[] = []
   const folders = [from]
+  // Folders git ignores are still walked for check files: only those are kept from them.
+  const outside = new Set<string>()
   const ignored = ignoredNames(await $.fs.read(root === '' ? '.gitignore' : `${root}/.gitignore`).catch(() => ''))
   let isWhole = true
   let i = 0
@@ -78,8 +81,10 @@ export async function walk($: EngineInterface, from = ''): Promise<Walked> {
     for (const entry of entries) {
       const name = folder === '' ? entry.name : `${folder}/${entry.name}`
 
+      const isIgnored = outside.has(folder) || ignored.anywhere.has(entry.name) || (folder === '' && ignored.atRoot.has(entry.name))
+
       // Never a check file: a frozen file stays in the project whatever git ignores.
-      if (ignored.has(entry.name) && !isFrozen(name)) continue
+      if (isIgnored && entry.kind !== 'dir' && !isFrozen(name)) continue
 
       if (entry.kind !== 'dir') {
         names.push(name)
@@ -88,6 +93,7 @@ export async function walk($: EngineInterface, from = ''): Promise<Walked> {
         stamps.push(text === undefined ? `${name}\t${entry.size}\t${entry.mtimeMs}` : `${name}\t${hash(text)}`)
       } else if (!entry.name.startsWith('.') && !NOT_THE_PROJECT.has(entry.name)) {
         folders.push(name)
+        if (isIgnored) outside.add(name)
       }
     }
   }
