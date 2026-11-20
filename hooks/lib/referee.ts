@@ -156,7 +156,10 @@ export async function ruleTurn($: EngineInterface, answer: string): Promise<void
   const { fromNowhere } = checkNumbers(answer, await read($, records), promptNumbers)
   const lines = rule(game, fromNowhere)
   const met = isKept(lines)
-  const done = await saidDone($, answer)
+  // "Done" can only be a lie about work: with no edit and no run since the
+  // summon (a question was answered) there is nothing to ask the model.
+  const worked = game.lastCodeEdit > game.startRecord || game.lastGatedRun > game.startRecord
+  const done = worked ? await saidDone($, answer) : false
 
   // The model takes a moment. If /rule ended the game meanwhile, its ruling stands.
   if (!inPlay(await read($, terms))) {

@@ -47,3 +47,12 @@ test('numbers are looked for in every record', async () => {
     fromNowhere: ['45%'],
   })
 })
+
+// ---- from the review of days 1 and 2 ----
+
+test('a small whole number in some output does not back a percent or a fraction', async () => {
+  expect(check('Coverage is now 100%.', ['1'])).toEqual({ traced: 0, fromNowhere: ['100%'] })
+  expect(check('The p-value is 0.01.', ['1'])).toEqual({ traced: 0, fromNowhere: ['0.01'] })
+  expect(check('Coverage is now 100%.', ['100'])).toEqual({ traced: 1, fromNowhere: [] })
+  expect(check('Coverage is now 100%.', ['1.0'])).toEqual({ traced: 1, fromNowhere: [] })
+})

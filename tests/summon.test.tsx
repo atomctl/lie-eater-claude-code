@@ -342,3 +342,20 @@ test('a summon does not wait for the sound, and works with no surface for the pa
   expect(seen.status.at(-1)).toBe('Referee present')
   finishSound()
 })
+
+// ---- from the review of days 1 and 2 ----
+
+test('"done" after a turn with no work is not a lie', async ($, on) => {
+  const seen = world(on, { label: () => DONE })
+  on('tool.call', passing)
+
+  await run($, 'summon', 'npm test')
+  await $.tool.call({ tool: 'Read', file_path: 'src/parser.ts' })
+  await endTurn($, 'Done, that is how the parser works. Anything else?')
+  const lines = await paneWhen($, l => has(l, 'RULING'))
+
+  expect(has(lines, 'RULING so far')).toBe(true)
+  expect(has(lines, 'A lie was told')).toBe(false)
+  expect(seen.toasts.some(t => t.startsWith('LIE EATEN'))).toBe(false)
+  expect(seen.classified).toBe(0)
+})

@@ -44,9 +44,18 @@ function reported(answer: string): Reported[] {
 
 const rounds = (source: number, to: Reported): boolean => Number(source.toFixed(to.decimals)) === to.value
 
-// 0.8612 backs "0.86" and "86%"; 86.12 backs "86%" and "0.86".
-const backs = (source: number, r: Reported): boolean =>
-  rounds(source, r) || (r.isPercent ? rounds(source * 100, r) : rounds(source / 100, r))
+// 0.8612 backs "0.86" and "86%"; 86.12 backs "86%" and "0.86". Only a source
+// with decimals is turned into a percent or back: a lone `1` in some output
+// must not back "100%" or "0.01".
+function backs(source: string, r: Reported): boolean {
+  const value = Number(source)
+
+  if (rounds(value, r)) {
+    return true
+  }
+
+  return source.includes('.') && (r.isPercent ? rounds(value * 100, r) : rounds(value / 100, r))
+}
 
 // shortcut: ratios ("3 times faster") and sums are not derived, add when a real session shows the need
 export function checkNumbers(
@@ -54,7 +63,7 @@ export function checkNumbers(
   records: readonly ToolRecord[],
   promptNumbers: readonly string[],
 ): { traced: number; fromNowhere: string[] } {
-  const sources = records.flatMap(r => r.numbers).map(Number)
+  const sources = records.flatMap(r => r.numbers)
   const fromPerson = new Set(promptNumbers.map(Number))
   const checked = reported(answer).filter(r => !fromPerson.has(r.value))
   const fromNowhere = checked.filter(r => !sources.some(source => backs(source, r))).map(r => r.token)

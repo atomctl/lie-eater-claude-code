@@ -29,6 +29,8 @@ export type Terms = {
   lastGatedRun: number        // record id of the newest test or build run; 0 when none
   net: Record<string, FileNet> // per test file, summed over its edits since the summon
   deleted: string[]           // test files removed with rm or git rm
+  made: string[]              // test files first written in this game; removing one again is no fault
+  otherRun?: { record: number; command: string }   // the newest test run that was not the verdict command
 }
 export type TermId = 'verdict' | 'asserts' | 'tests' | 'skips' | 'numbers'
 export type RulingLine = { term: TermId; pass: boolean; plain: string; detail: string; why?: string; soft?: true }   // soft: a note, never breaks the game

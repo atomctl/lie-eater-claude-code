@@ -5,6 +5,7 @@ import {
   evidenceLine,
   extractNumbers,
   isCodeFile,
+  isShellEdit,
   isTestFile,
   makeRecord,
   measureTestEdit,
@@ -172,4 +173,87 @@ test('evidenceLine shows the command and its last output line, cut to 160 charac
   )
   expect(evidenceLine(rec({ tool: 'Edit', kind: 'edit', target: 'src/a.py' }))).toBe('Edit src/a.py')
   expect(evidenceLine(rec({ target: 'x'.repeat(300), output: 'ok' }))).toHaveLength(160)
+})
+
+// ---- from the review of days 1 and 2 ----
+
+test('classifyCommand looks at the command, not at words inside it', async () => {
+  const cases: [string, string][] = [
+    ['npm i -D vitest', 'install'],
+    ['pip install pytest', 'install'],
+    ['python -m pip install pytest', 'install'],
+    ['cat jest.config.js', 'other'],
+    ['git commit -m "fix jest"', 'git'],
+    ['echo "npm test"', 'other'],
+    ['CI=1 npm test', 'test'],
+    ['uv run pytest -q', 'test'],
+    ['python3 -m pytest', 'test'],
+    ["go test -run 'A|B' ./...", 'test'],
+    ['pnpm exec vitest run', 'test'],
+  ]
+
+  for (const [command, kind] of cases) {
+    expect(`${command} => ${classifyCommand(command)}`).toBe(`${command} => ${kind}`)
+  }
+})
+
+test('parseCounts reads go test output, and is not fooled by a test name', async () => {
+  expect(parseCounts('ok  \texample.com/a\t0.012s\nok  \texample.com/b\t0.004s')).toEqual({ passed: 2, failed: 0 })
+  expect(parseCounts('--- FAIL: TestAdd (0.00s)\nFAIL\texample.com/a\t0.012s\nok  \texample.com/b\t0.004s')).toEqual({
+    passed: 1,
+    failed: 2,
+  })
+  // a passing mocha run with a test called "returns 1 failing item"
+  expect(parseCounts('  ✓ returns 1 failing item\n\n  12 passing (20ms)')).toEqual({ passed: 12, failed: 0 })
+})
+
+test('a pipe inside quotes is not a pipe', async () => {
+  const made = makeRecord({ tool: 'Bash', command: "go test -run 'A|B' ./...", text: 'ok  \tx\t0.01s' }, 1, 1, 0)
+
+  expect(made).toMatchObject({ kind: 'test', state: 'clean' })
+  // go prints no counts line, but a piped run still shows its ok lines
+  expect(
+    makeRecord({ tool: 'Bash', command: 'go test ./... 2>&1 | tail -20', text: 'ok  \tx\t0.01s' }, 1, 1, 0).state,
+  ).toBe('clean')
+})
+
+test('isTestFile knows .mjs, .cjs and .mts test files', async () => {
+  for (const path of ['src/a.test.mjs', 'src/a.test.cjs', 'src/a.spec.mts']) {
+    expect(`${path} ${isTestFile(path)}`).toBe(`${path} true`)
+  }
+})
+
+test('measureTestEdit: a regex .test( and a model.fit( are not tests or focus marks', async () => {
+  expect(measureTestEdit('', 'if (/x/.test(name)) { model.fit(X, y) }')).toMatchObject({ tests: [0, 0], skips: [0, 0] })
+  expect(measureTestEdit('it("a", () => {})', 'fit("a", () => {})')).toMatchObject({ tests: [1, 1], skips: [0, 1] })
+})
+
+test('measureTestEdit: a test that is commented out is gone', async () => {
+  const old = 'it("a", () => {\n  expect(a).toBe(1)\n})'
+  const commented = '// it("a", () => {\n//   expect(a).toBe(1)\n// })'
+
+  expect(measureTestEdit(old, commented)).toMatchObject({ asserts: [1, 0], tests: [1, 0] })
+  expect(measureTestEdit('def test_a():\n    assert a == 1', '# def test_a():\n#     assert a == 1')).toMatchObject({
+    asserts: [1, 0],
+    tests: [1, 0],
+  })
+  // a Rust attribute starts with # and is not a comment
+  expect(measureTestEdit('', '#[test]\nfn adds() { assert_eq!(1, 1); }')).toMatchObject({ tests: [0, 1], asserts: [0, 1] })
+})
+
+test('isShellEdit: a shell command that changes files', async () => {
+  for (const command of [
+    "sed -i '' 's/a/b/' src/a.ts",
+    'git checkout -- src/a.ts',
+    'git stash',
+    'npx prettier --write src',
+    'npx eslint --fix src',
+    'echo "x = 1" >> src/config.py',
+    'mv src/a.ts src/b.ts',
+  ]) {
+    expect(`${command} ${isShellEdit(command)}`).toBe(`${command} true`)
+  }
+  for (const command of ['npm test 2>&1', 'npm test > /dev/null', 'ls -la', 'git status', 'cat a.ts', 'npm test > out.log']) {
+    expect(`${command} ${isShellEdit(command)}`).toBe(`${command} false`)
+  }
 })

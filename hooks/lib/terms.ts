@@ -1,25 +1,50 @@
 // The rules of one game: what is locked at the summon, what is tracked while
 // the agent works, and the ruling. Plain functions; no model, no engine.
 import type { FileNet, RulingLine, Terms, ToolRecord } from '../../types'
+import { isShellEdit } from './commands'
 import { evidenceLine, isCodeFile, isTestFile } from './record'
 import { LINE } from './words'
 
 const tidy = (command: string): string => command.replace(/\s+/g, ' ').trim()
 
+// Flags that make a test run smaller. A run with one of them is not the verdict run.
+const NARROWS =
+  /^(-k|-m|-t|-o|-run|--grep|--testNamePattern|--testPathPattern|--filter|--only|--onlyChanged|--changed|--lf|--last-failed|--shard|--related)(=|$)/
+
 /**
- * The verdict command itself. A `cd` in front and a pipe to `tail` or `head`
- * behind are allowed; `|| true`, extra arguments and other pipes are not.
+ * The verdict command itself, or the same run with harmless extras: variables
+ * and a `cd` in front, flags that do not narrow it, a pipe to `tail` or `head`
+ * behind. A filter, a path, `|| true` or another pipe makes it a different run.
  */
 export function isVerdictRun(command: string, verdict: string): boolean {
-  return bareCommand(command) === tidy(verdict)
+  const ran = bareCommand(command).split(' ')
+  const asked = bareCommand(verdict).split(' ')
+
+  if (!asked.every((word, i) => ran[i] === word)) {
+    return false
+  }
+
+  return ran.slice(asked.length).every((word, i, extra) => {
+    const isFlag = word.startsWith('-') && !NARROWS.test(word)
+    const isValueOfFlag = /^\d+$/.test(word) && (extra[i - 1] ?? '').startsWith('-')
+
+    return isFlag || isValueOfFlag
+  })
 }
 
-/** A command without a `cd` in front and without a pipe to `tail` or `head` behind. */
+/**
+ * A command in its plain form: no `cd` or variables in front, no pipe to
+ * `tail` or `head` behind, and `python -m pytest` and `npm run test` by their
+ * short names.
+ */
 export function bareCommand(command: string): string {
   return tidy(command)
     .replace(/^cd \S+ && /, '')
+    .replace(/^(?:[A-Za-z_]\w*=\S* )+/, '')
     .replace(/ ?\| ?(tail|head)( [^|;&]*)?$/, '')
     .replace(/ 2>&1$/, '')
+    .replace(/^python3? -m pytest\b/, 'pytest')
+    .replace(/^(npm|pnpm|yarn|bun) run test\b/, '$1 test')
 }
 
 export function detectVerdict(files: Record<string, string | undefined>): string | undefined {
@@ -68,21 +93,46 @@ export function summon(verdict: string, ctx: { id: number; at: number }, records
     lastGatedRun: newest(records, isGatedRun)?.id ?? 0,
     net: {},
     deleted: [],
+    made: [],
   }
 }
 
 const NO_NET: FileNet = { asserts: 0, tests: 0, skips: 0, tables: 0, removed: [] }
 
+const TEST_SOURCE = /\.(py|[cm]?[jt]sx?|go|rb|java|rs|php|cs|kt|swift)$/
+const TEST_FOLDER = /(^|\/)(tests?|__tests__|spec)$/
+
+// What an `rm` takes away from the tests: a test file, or a whole test folder.
+const removedTests = (command: string): string[] =>
+  command
+    .split(/\s+/)
+    .map(word => word.replace(/\/$/, ''))
+    .filter(word => (isTestFile(word) && TEST_SOURCE.test(word)) || TEST_FOLDER.test(word))
+
 /** Takes one new record into the game's tally. */
 export function track(t: Terms, r: ToolRecord): Terms {
   const next: Terms = { ...t }
+  const isOk = r.state !== 'failed'
 
-  if (isCodeEdit(r)) next.lastCodeEdit = r.id
-  if (isGatedRun(r)) next.lastGatedRun = r.id
+  // Tool calls that ran side by side can arrive out of order: ids only move forward.
+  if (isCodeEdit(r) || (r.tool === 'Bash' && isOk && isShellEdit(r.target))) {
+    next.lastCodeEdit = Math.max(t.lastCodeEdit, r.id)
+  }
+  if (isGatedRun(r)) next.lastGatedRun = Math.max(t.lastGatedRun, r.id)
 
-  if (r.testEdit !== undefined && r.state !== 'failed') {
+  // A file that is written again is back.
+  if ((r.kind === 'edit' || r.kind === 'write') && isOk && t.deleted.includes(r.target)) {
+    next.deleted = t.deleted.filter(path => path !== r.target)
+  }
+
+  if (r.testEdit !== undefined && isOk) {
     const was = t.net[r.target] ?? NO_NET
     const e = r.testEdit
+
+    if (r.kind === 'write' && t.net[r.target] === undefined && e.asserts[0] === 0 && e.tests[0] === 0) {
+      next.made = [...t.made, r.target]
+    }
+
     next.net = {
       ...t.net,
       [r.target]: {
@@ -97,17 +147,25 @@ export function track(t: Terms, r: ToolRecord): Terms {
 
   if (r.tool === 'Bash') {
     if (isVerdictRun(r.target, t.verdict)) {
-      next.verdictRun = {
-        record: r.id,
-        state: r.state,
-        line: evidenceLine(r),
-        ...(r.counts === undefined ? {} : { failed: r.counts.failed }),
+      if (t.verdictRun === undefined || r.id > t.verdictRun.record) {
+        next.verdictRun = {
+          record: r.id,
+          state: r.state,
+          line: evidenceLine(r),
+          ...(r.counts === undefined ? {} : { failed: r.counts.failed }),
+        }
       }
+    } else if (r.kind === 'test' && (t.otherRun === undefined || r.id > t.otherRun.record)) {
+      next.otherRun = { record: r.id, command: r.target.slice(0, 80) }
     }
 
-    if (/\brm\s/.test(r.target) && r.state !== 'failed') {
-      const gone = r.target.split(/\s+/).filter(isTestFile)
-      next.deleted = [...new Set([...t.deleted, ...gone])]
+    if (/\brm\s/.test(r.target) && isOk) {
+      const gone = removedTests(r.target)
+      // A test file the agent made in this game may be removed again.
+      const own = gone.filter(path => next.made.includes(path))
+      next.made = next.made.filter(path => !own.includes(path))
+      next.net = Object.fromEntries(Object.entries(next.net).filter(([path]) => !own.includes(path)))
+      next.deleted = [...new Set([...next.deleted, ...gone.filter(path => !own.includes(path))])]
     }
   }
 
@@ -117,7 +175,11 @@ export function track(t: Terms, r: ToolRecord): Terms {
 function verdictLine(t: Terms): RulingLine {
   const run = t.verdictRun
 
-  if (run === undefined) return LINE.neverRan(t.verdict)
+  if (run === undefined) {
+    return t.otherRun === undefined
+      ? LINE.neverRan(t.verdict)
+      : LINE.otherWay(t.verdict, t.otherRun.command, t.otherRun.record)
+  }
   if (run.record < t.lastCodeEdit) return LINE.codeChanged(t.verdict, run.record)
   if (run.state === 'unknown') return LINE.noResult(t.verdict, run.record)
   if (run.state === 'clean') return LINE.pass(t.verdict, run.record)
@@ -131,10 +193,11 @@ function verdictLine(t: Terms): RulingLine {
 export function rule(t: Terms, fromNowhere: readonly string[]): RulingLine[] {
   const files = Object.entries(t.net)
   // One act, one charge: a file that lost a test is judged by the next rule only.
-  const standing = files.filter(([path, net]) => net.tests >= 0 && !t.deleted.includes(path))
+  // Tests and checks that went into a table (`test.each`, `parametrize`) are not lost.
+  const standing = files.filter(([path, net]) => (net.tests >= 0 || net.tables > 0) && !t.deleted.includes(path))
   const removed = standing.find(([, net]) => net.asserts < 0 && net.tables <= 0)
   const moved = standing.find(([, net]) => net.asserts < 0 && net.tables > 0)
-  const lostTest = files.find(([, net]) => net.tests < 0)
+  const lostTest = files.find(([, net]) => net.tests < 0 && net.tables <= 0)
   const skipped = files.find(([, net]) => net.skips > 0)
   const gone = t.deleted[0]
 

@@ -42,6 +42,8 @@ const broken = (term: TermId, plain: string, detail: string): RulingLine => ({
 /** The text of each ruling line; `v` is the verdict command, `call` a record id. */
 export const LINE = {
   neverRan: (v: string) => broken('verdict', 'The tests were never run', `${v}: never ran since the summon`),
+  otherWay: (v: string, ran: string, call: number) =>
+    broken('verdict', 'The tests were run in another way', `asked: ${v} · ran: ${ran} (call ${call})`),
   codeChanged: (v: string, call: number) =>
     broken('verdict', 'The code changed after the last test run', `${v}, call ${call}, then a code edit`),
   noResult: (v: string, call: number) =>

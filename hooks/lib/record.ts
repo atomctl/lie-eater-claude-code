@@ -1,32 +1,15 @@
 // The recorder's rules: what one tool call was, and how it ended.
 // Plain functions only. Nothing here talks to the engine.
-import type { CommandKind, TestEdit, ToolRecord } from '../../types'
+import type { TestEdit, ToolRecord } from '../../types'
+import { classifyCommand, hasPipe } from './commands'
+
+export { classifyCommand, isShellEdit } from './commands'
 
 const OUTPUT_KEPT = 2000
 const NUMBERS_KEPT = 150
 const LINE_KEPT = 160
 
-// The order is the priority when one command chains several kinds.
-const KINDS: [CommandKind, RegExp][] = [
-  [
-    'test',
-    /\b(pytest|py\.test|jest|vitest|mocha|ava|tox|nox|rspec|phpunit|ctest)\b|\b(npm|pnpm|yarn|bun)\s+(run\s+)?test\b|\b(go|cargo|deno|dotnet|mvn|gradle\w*)\s+test\b|\bpython3?\s+-m\s+(pytest|unittest)\b|\bnode\s+--test\b|\bmake\s+(test|check)\b|\bclaude\s+plugin\s+test\b/,
-  ],
-  [
-    'build',
-    /\b(npm|pnpm|yarn|bun)\s+(run\s+)?build\b|\btsc\b|\b(cargo|go|docker|next|vite|gradle\w*)\s+build\b|\bmvn\s+(package|compile)\b|\bmake(\s+all)?\s*$/,
-  ],
-  ['lint', /\b(eslint|ruff|flake8|pylint|mypy|biome|clippy|golangci-lint)\b|\bprettier\s+--check\b/],
-  ['git', /(^|&&|;)\s*git\s/],
-  [
-    'install',
-    /\b(npm|pnpm|yarn|bun)\s+(install|ci|add)\b|\bpip3?\s+install\b|\buv\s+(add|sync|pip)\b|\bcargo\s+add\b|\bbrew\s+install\b|\bapt(-get)?\s+install\b/,
-  ],
-]
-
-export function classifyCommand(command: string): CommandKind {
-  return KINDS.find(([, pattern]) => pattern.test(command))?.[0] ?? 'other'
-}
+const count = (text: string, pattern: RegExp): number => [...text.matchAll(pattern)].length
 
 const num = (found: RegExpMatchArray | null | undefined): number =>
   found?.[1] === undefined ? 0 : Number(found[1])
@@ -50,10 +33,11 @@ export function parseCounts(output: string): { passed: number; failed: number } 
     return { passed: Number(ran[1]) - failed, failed }
   }
 
-  const passing = output.match(/(\d+) passing/)
+  // mocha: the counts stand at the start of their own lines
+  const passing = output.match(/^\s*(\d+) passing\b/m)
 
   if (passing) {
-    return { passed: Number(passing[1]), failed: num(output.match(/(\d+) failing/)) }
+    return { passed: Number(passing[1]), failed: num(output.match(/^\s*(\d+) failing\b/m)) }
   }
 
   const nodePass = output.match(/^ℹ pass (\d+)/m)
@@ -68,15 +52,19 @@ export function parseCounts(output: string): { passed: number; failed: number } 
   const passed = last(line, /(\d+) passed/g)
   const failed = last(line, /(\d+) failed/g)
 
-  if (!passed && !failed) {
-    return undefined
+  if (passed || failed) {
+    return { passed: num(passed), failed: num(failed) }
   }
 
-  return { passed: num(passed), failed: num(failed) }
+  // go test prints no counts: one `ok` line per passing package, `FAIL` lines for the rest
+  const ok = count(output, /^ok\s+\S+/gm)
+  const bad = count(output, /^(?:--- FAIL|FAIL)\b/gm)
+
+  return ok + bad === 0 ? undefined : { passed: ok, failed: bad }
 }
 
 const TEST_FILE =
-  /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec)\.[jt]sx?$|(^|\/)test_[^/]+\.py$|_test\.(py|go|rb)$|Tests?\.java$|_spec\.rb$/
+  /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)test_[^/]+\.py$|_test\.(py|go|rb)$|Tests?\.java$|_spec\.rb$/
 
 export function isTestFile(path: string): boolean {
   return TEST_FILE.test(path)
@@ -87,14 +75,25 @@ export function isCodeFile(path: string): boolean {
 }
 
 const ASSERTS = /\bassert\b|\bexpect\(|\bassert_(eq|ne)!|\bassert[A-Z]\w*|\.should\b/g
-const TESTS = /\bdef test_\w+|\b[xf]?it(\.\w+)*\s*\(|\btest(\.\w+)*\s*\(|\bfunc Test\w*|#\[test\]|@Test\b/g
+// `(?<![.\w])` keeps out a method of the same name: `/re/.test(x)`, `model.fit(X)`.
+const TESTS =
+  /\bdef test_\w+|(?<![.\w])[xf]?it(\.\w+)*\s*\(|(?<![.\w])test(\.\w+)*\s*\(|\bfunc Test\w*|#\[test\]|@Test\b/g
 const SKIPS =
-  /\.skip\s*\(|\bxit\s*\(|\bxdescribe\s*\(|\.todo\s*\(|@pytest\.mark\.skip|@unittest\.skip|\bt\.Skip\(|#\[ignore\]|@Disabled\b|\.only\s*\(|\bfit\s*\(|\bfdescribe\s*\(/g
+  /\.skip\s*\(|(?<![.\w])xit\s*\(|(?<![.\w])xdescribe\s*\(|\.todo\s*\(|@pytest\.mark\.skip|@unittest\.skip|\bt\.Skip\(|#\[ignore\]|@Disabled\b|\.only\s*\(|(?<![.\w])fit\s*\(|(?<![.\w])fdescribe\s*\(/g
 const TABLES = /\b(test|it|describe)\.each\b|@pytest\.mark\.parametrize|#\[rstest\]|@ParameterizedTest\b/g
 
-const count = (text: string, pattern: RegExp): number => [...text.matchAll(pattern)].length
 
-export function measureTestEdit(oldText: string, newText: string): TestEdit {
+// A line that is commented out is not code: a test turned into a comment is gone.
+// (`#[` is a Rust attribute and `#!` a first line, not comments.)
+const code = (text: string): string =>
+  text
+    .split('\n')
+    .filter(line => !/^\s*(\/\/|#(?![[!]))/.test(line))
+    .join('\n')
+
+export function measureTestEdit(oldRaw: string, newRaw: string): TestEdit {
+  const oldText = code(oldRaw)
+  const newText = code(newRaw)
   const kept = new Set(newText.split('\n').map(line => line.trim()))
   const lines = oldText
     .split('\n')
@@ -130,9 +129,6 @@ export type RawCall = {
   isBackground?: boolean
   isInterrupted?: boolean
 }
-
-// One `|` that is not part of `||`: the shell then reports the last command only.
-const hasPipe = (command: string): boolean => /(^|[^|])\|([^|]|$)/.test(command)
 
 const EDIT_TOOLS: Record<string, 'edit' | 'write'> = { Edit: 'edit', NotebookEdit: 'edit', Write: 'write' }
 
