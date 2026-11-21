@@ -9,7 +9,6 @@ import { detailLines } from './words'
 
 export const RECEIPTS_JSON = '.lie-eater/receipts.json'
 export const RECEIPTS_MD = '.lie-eater/receipts.md'
-export const CARD_SVG = '.lie-eater/card.svg'
 
 export type Receipt = {
   format: 'lie-eater/receipts'

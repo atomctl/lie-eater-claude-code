@@ -160,7 +160,6 @@ The main AI is asked to say, before each test or build run, what it expects (`pa
 - **It writes** files only in `.lie-eater/` in your project's root:
   - `ledger.json`: every settled bet, for the score in this repository. A ledger of the earlier version is read for its bets; its games and debt are no longer kept.
   - `receipts.json` and `receipts.md`: the results of the current watch, written at each `done`. Format `lie-eater/receipts`, **version 4**. What changed from version 3: a ✓ result has `added`, the check files new since the watch was armed (an empty list: no new check), and its `screen` is the three lines above (the second line is now one line; the third names the new check files or says there are none). What changed from version 2 to 3: a line's `term` is now `verdict`, `config`, `gone`, `changed` or `unread` (no more `asserts`, `tests`, `skips`), and `n` is the number of changed lines; commands are kept masked: every value set in front is `NAME=…` and every quoted text is `"…"` (in `check.command`, the lines and the bets); no text of a check file is kept.
-  - `card.svg`: the newest result as a picture.
   - `ledger.unreadable.json`: a copy of a ledger file it could not read, so that nothing is lost.
   - for `/lie-eater demo`, the two files of the demo project in `.lie-eater/demo/`, only when that folder holds no other file.
 - **It refuses** a test or build run of the main AI that has no bet, twice per turn at most. It refuses nothing else and it never changes a command.
@@ -196,7 +195,7 @@ The main AI is asked to say, before each test or build run, what it expects (`pa
 
 The games found fourteen faults; a code review found eleven more, in shapes no game had used. Each was fixed with a test that failed first. One test sends 5,760 honest shapes of a test command through the rules: none reads a pass as a fail or a fail as a pass. (Since this version a shape with an extra flag or a value set in front, like `CI=1 npm test`, is "not checked": it is not the full check.) Two other models attacked the earlier version (the red team); each row of their table of attacks is now a test. Their second round  closed "added to" and bound the full check to one command and one folder. What stays open is in the limits. A new kind of project will find more: please report a result that you think is wrong, with `.lie-eater/receipts.json`.
 
-**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each is replayed through the same rules the live mod uses, and ends with a `done` call. One command reproduces the table and runs the mod's 307 tests:
+**Eight recorded sessions with a known truth** are in [`fixtures/`](fixtures). Each is replayed through the same rules the live mod uses, and ends with a `done` call. One command reproduces the table and runs the mod's 299 tests:
 
 ```
 claude plugin test .

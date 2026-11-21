@@ -5,15 +5,3 @@ export const SMALL_FEATHER = String.raw`     /'
  \ \|//
    \|/
     |`.split('\n')
-
-export const MEDIUM_FEATHER = String.raw`          /~.
-      .\ / //'
-   .\ \ / ///~'
-. \ \ \|/ / / //'
- \ \ \\|// / /'
-  \ \ \|/ / /
-   \ \\|// /'
-    \ \|/ /
-      \|/
-       |
-       |`.split('\n')

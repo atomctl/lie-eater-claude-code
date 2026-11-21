@@ -1,14 +1,13 @@
-// What Lie Eater keeps in the person's repository (the ledger of bets, the
-// receipts and the card) and the one status line.
+// What Lie Eater keeps in the person's repository (the ledger of bets and the
+// receipts) and the one status line.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Bet, Ledger, Terms } from '../../types'
 import { youWon } from './bets'
-import { cardSvg } from './card'
 import { EMPTY_LEDGER, LEDGER_PATH, addBet, isLedgerText, parseLedger } from './ledger'
 import { inProject } from './project'
-import { CARD_SVG, RECEIPTS_JSON, RECEIPTS_MD, buildReceipt, receiptToMarkdown } from './receipts'
+import { RECEIPTS_JSON, RECEIPTS_MD, buildReceipt, receiptToMarkdown } from './receipts'
 import { nowOf } from './result'
 import { META_START, SHAPE } from './state'
 import { hasChanged } from './terms'
@@ -73,7 +72,7 @@ export async function recordBet($: EngineInterface, b: Bet): Promise<void> {
   )
 }
 
-/** Writes the receipts and the card of this watch into the person's repository. */
+/** Writes the receipts of this watch into the person's repository. */
 export async function writeReceipts($: EngineInterface, w: Terms): Promise<void> {
   const receipt = buildReceipt({
     watch: w,
@@ -86,5 +85,4 @@ export async function writeReceipts($: EngineInterface, w: Terms): Promise<void>
   // A folder that cannot be written to must not stop a result.
   await $.fs.write(await inProject($, RECEIPTS_JSON), `${JSON.stringify(receipt, null, 2)}\n`).catch(() => undefined)
   await $.fs.write(await inProject($, RECEIPTS_MD), receiptToMarkdown(receipt)).catch(() => undefined)
-  await $.fs.write(await inProject($, CARD_SVG), cardSvg(receipt)).catch(() => undefined)
 }

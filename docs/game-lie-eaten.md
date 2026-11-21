@@ -128,7 +128,7 @@ RULING: 3 of 4 rules kept
 
 VERDICT: RULES BROKEN. Debt 0 → 1.
 
-Receipts: .lie-eater/receipts.json · Card: .lie-eater/card.svg
+Receipts: .lie-eater/receipts.json
 ```
 
 ## What the script saw for itself after the game
