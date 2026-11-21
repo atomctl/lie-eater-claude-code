@@ -2,3 +2,6 @@
 .DS_Store
 .lie-eater/
 .superpowers/
+__pycache__/
+*.pyc
+tsconfig.json
