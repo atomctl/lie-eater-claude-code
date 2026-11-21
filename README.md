@@ -1,17 +1,14 @@
 # Lie Eater
 
 ```
-          /~.
-      .\ / //'
-   .\ \ / ///~'
-. \ \ \|/ / / //'
- \ \ \\|// / /'
-  \ \ \|/ / /
-   \ \\|// /'
-    \ \|/ /
-      \|/
-       |
-       |
+                   ...  '..' . '''..   .
+               .'ol.;oooo:..'  ''.:looo;.lo''
+           c:;oc;;cclc:.x0WWWNMNMN0o :clccc;co::c.
+       ':lc:;cclllllc dNXWMWXXXXXWNWWx.cllllllc;;cl::
+     c::;;ccccllllll.cMMMMXd    xXMNNN; llllllcccc;;':c.
+      ;'lcccccccllll'.ONWMXNlcllNXWMW0 'lllllcccccll';
+          ';:;oolllll;.x0WWWNMWNWWN0d ;olllloo;';'
+                  ;;;:;' :d0O0OKOd' ';:;;;  .
 ```
 
 An AI can say "done" after it made the checks easier. Lie Eater checks the proof before you believe it.
@@ -69,19 +66,19 @@ Press c, or type /check.
 
 The button asks the AI to run the full check and say "done" again.
 
-## The feather
+## The eye
 
-In the Egyptian weighing of the heart, a heart was weighed against the feather of truth.\
-Lie Eater weighs a claim, "done", against the files.\
-The feather is its sign.\
-Plain code decides. The feather only marks the result.
+Lie Eater watches what the AI does to your checks.\
+When the AI says "done", the eye has already seen whether a check was changed.\
+A formula in `tools/eye/eye.py` makes the drawing. No picture was traced.\
+Plain code decides every result. The eye only marks it.
 
 ## You do nothing: it is always on
 
 - Lie Eater starts with Claude Code. It finds your project's checks by itself.
 - One line under the prompt always says where you stand: `Lie Eater · watching`, `Lie Eater ✓ checked`, `Lie Eater ✓ checked · no new check`, `Lie Eater ✗ don't trust "done"`, `Lie Eater ? not checked` or `Lie Eater ? no checks yet`.
 - It stays quiet. Only "don't trust" opens the Lie Eater pane by itself; the first one in a row also shows one message and plays a sound. A bet the AI lost shows one message, with no sound.
-- The pane is small: the feather and the result, one row of buttons, one dim hint. The Details (the test command, each check with its mark, the changed lines, the bets) show only when you ask: type `/lie-eater details`, or press `d` in the pane. The pane closes by itself when you send your next prompt (a prompt Lie Eater sends for you, and its own commands, do not close it).
+- The small pane shows the eye beside the result, one row of buttons and one dim hint. The Details (the test command, each check with its mark, the changed lines, the bets) show only when you ask: type `/lie-eater details`, or press `d` in the pane. The pane closes by itself when you send your next prompt (a prompt Lie Eater sends for you, and its own commands, do not close it).
 - **No checks yet?** Press `Add checks` in the pane, or type `/check`. The AI then writes your first tests. They protect the work from then on; the work done before them is not checked.
 
 | Command | What it does |
@@ -243,7 +240,7 @@ In Lie Eater the proof is also fixed before the work: the check files are frozen
 - **"No new check" speaks of the work since the last ✓.** After a green result the watch is armed again with the new check files frozen, so a second `done` with nothing changed says "The AI added no new check for this change." even when the first green named new checks.
 - **A check file that cannot be read stays unread.** A file of the frozen set that could not be read when the watch was armed (for example one over 4 MiB, the engine's limit for one read) makes every result at best "not checked" until a new watch is armed: after an accepted ✗, or in a new session.
 - **Big projects:** past 400 folders or 5,000 files, or when a folder cannot be listed, the project is not read to its end, and no result is better than "not checked". The frozen texts are kept in the session's memory (2,000,000 characters in all; past that a file is kept as a hash). Nothing was measured on a large project, and nothing in Go or Rust.
-- **The pane wraps at narrow widths.** At 100 columns the default pane is at most 7 rows, with the five-row feather beside the result, a row of buttons and a hint. The demo's longer hint wraps under about 110 columns.
+- **The pane wraps at narrow widths.** At 100 body columns the default pane is at most 7 rows, with the five-row eye beside the result, a row of buttons and a hint. Below 72 body columns the result uses the full width and the eye is hidden. The demo's longer hint wraps under about 110 columns.
 - **The sound plays on macOS only.** The status line, the pane and the buttons are tested in the test kit; the owner played the two-act demo on a real screen on 20 Nov 2026 (the red result, the pane, the repair, the green result and the closing lines all showed); the buttons show no key there, so a line under them names the key and the command.
 
 The name is inspired by the manga Usogui. No artwork or text from it is used.

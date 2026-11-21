@@ -4,7 +4,7 @@ import { BET_DESCRIPTION, BET_SCHEMA, BET_TOOL, BET_TOOL_FULL } from './lib/bets
 import { callIt, closeBets, refuseRun, settle, takeBet } from './lib/betting'
 import { loadLedger, refreshStatus } from './lib/house'
 import { DEMO_HINT } from './lib/demo'
-import { FEATHER_GOLD, SMALL_FEATHER } from './lib/feather'
+import { EYE_GOLD, SMALL_EYE } from './lib/eye'
 import { detailRows } from './lib/pane'
 import {
   DONE_DESCRIPTION,
@@ -32,7 +32,8 @@ const COMMANDS = [
 const OWN_COMMANDS: ReadonlySet<string> = new Set(COMMANDS.map(c => c.name))
 // The buttons row already shows `d: Details`: the hint names it only when no other key is there to name.
 const DETAILS_HINT = 'Press d, or type /lie-eater details.'
-const FEATHER_WIDTH = Math.max(...SMALL_FEATHER.map(row => row.length)) + 1
+const EYE_WIDTH = Math.max(...SMALL_EYE.map(row => row.length)) + 1
+const MIN_RESULT_WIDTH = 40
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -153,10 +154,11 @@ export const register: Register = on => {
     return out
   })
 
-  // The feather sits to the left of the result, above the buttons and hint.
+  // The eye sits to the left of the result when there is room for both.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const columns = e.props.bodyColumns
+    const showEye = columns >= EYE_WIDTH + MIN_RESULT_WIDTH
     const view = await paneView($)
     const [title, ...said] = view.now.screen
     const voice = voiceOf(view.now)
@@ -180,10 +182,12 @@ export const register: Register = on => {
       <Box flexDirection="column">
         {view.closing !== null && [...view.closing, ' '].map(line => <Text>{line}</Text>)}
         <Box flexDirection="row">
-          <Box flexDirection="column" width={FEATHER_WIDTH} flexShrink={0}>
-            {SMALL_FEATHER.map(row => <Text color={FEATHER_GOLD} mono>{row}</Text>)}
-          </Box>
-          <Box flexDirection="column" flexShrink={1}>
+          {showEye && (
+            <Box flexDirection="column" width={EYE_WIDTH} flexShrink={0}>
+              {SMALL_EYE.map(row => <Text color={EYE_GOLD} mono>{row}</Text>)}
+            </Box>
+          )}
+          <Box flexDirection="column" width={columns - (showEye ? EYE_WIDTH : 0)}>
             <Text bold>{title ?? ''}</Text>
             {said.map(line => (
               <Text>{line}</Text>

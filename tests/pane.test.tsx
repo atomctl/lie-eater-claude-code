@@ -1,4 +1,4 @@
-// The pane gets out of the way: the feather and the result, one row of buttons,
+// The pane gets out of the way: the eye and the result, one row of buttons,
 // one dim hint; Details only when asked; closed at the person's next prompt.
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
@@ -23,7 +23,7 @@ const rowsOf = (text: string, columns: number) => Math.max(1, Math.ceil(text.len
 
 /**
  * The rows the pane's body takes at the kit's width, as a terminal wraps them:
- * the top block is as tall as the feather or the wrapped lines beside it, a row
+ * the top block is as tall as the eye or the wrapped result, a row
  * of buttons is one row, a Text wraps at the body's width.
  */
 async function bodyRows($: Engine, bodyColumns = PANE.props.bodyColumns): Promise<number> {
@@ -32,10 +32,12 @@ async function bodyRows($: Engine, bodyColumns = PANE.props.bodyColumns): Promis
   await ui.unmount()
 
   return kids(root as Node).reduce((rows, child) => {
-    const [feather, words] = kids(child)
-    if (child.type === 'Box' && child.props?.flexDirection === 'row' && feather !== undefined && words !== undefined && typeof feather.props?.width === 'number') {
-      const room = bodyColumns - feather.props.width
-      return rows + Math.max(kids(feather).length, kids(words).reduce((n, line) => n + rowsOf(textOf(line), room), 0))
+    const blocks = kids(child)
+    const result = blocks.at(-1)
+    const width = result?.props?.width
+    if (child.type === 'Box' && child.props?.flexDirection === 'row' && result !== undefined && typeof width === 'number') {
+      const eyeRows = blocks.length === 2 && blocks[0] !== undefined ? kids(blocks[0]).length : 0
+      return rows + Math.max(eyeRows, kids(result).reduce((n, line) => n + rowsOf(textOf(line), width), 0))
     }
 
     return rows + (child.type === 'Text' ? rowsOf(textOf(child), bodyColumns) : 1)
@@ -51,7 +53,7 @@ async function small($: Engine, hint: string) {
   expect(lines.filter(l => l === 'Details' || l.startsWith('Full check:') || l.startsWith('Calls recorded') || l === 'No tool calls yet.')).toEqual([])
 }
 
-test('the default pane before any result: the feather and the intro, the d button, the Details hint; no Details', async ($, on) => {
+test('the default pane before any result shows the eye, the intro, the d button and the hint without Details', async ($, on) => {
   world(on, project())
   await start($)
 

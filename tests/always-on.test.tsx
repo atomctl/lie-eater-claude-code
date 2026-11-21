@@ -550,7 +550,7 @@ test('/lie-eater opens the pane', async ($, on) => {
 
 // ---- the words ----
 
-const BANNED = /\b(game|rules?|ruling|verdict|referee|summon|debt)\b|LIE EATEN|call \d|\(\^_\^\)|\(-_-\)|\(o_o\)|No\. \d/i
+const BANNED = /\b(game|rules?|ruling|verdict|referee|summon|debt|fea[t]her)\b|Egyptian weighing|LIE EATEN|call \d|\(\^_\^\)|\(-_-\)|\(o_o\)|No\. \d/i
 
 test('the person never reads the old words: not in the pane, a toast, the status line or a command', async ($, on) => {
   const opts = project()

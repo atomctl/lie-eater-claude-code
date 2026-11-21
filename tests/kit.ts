@@ -3,7 +3,7 @@
 import { mock } from 'claude-code/testing'
 import type { Engine, Mounted } from 'claude-code/testing'
 
-import { SMALL_FEATHER } from '../hooks/lib/feather'
+import { SMALL_EYE } from '../hooks/lib/eye'
 
 // The kit does not export the type of a test's `on`; the clock mock takes one.
 type On = Parameters<typeof mock.clock>[0]
@@ -186,7 +186,7 @@ export function world(on: On, opts: World = {}): Seen {
   return seen
 }
 
-export const words = (found: readonly { text?: string }[]): string[] => found.map(el => el.text ?? '').filter(text => !SMALL_FEATHER.includes(text))
+export const words = (found: readonly { text?: string }[]): string[] => found.map(el => el.text ?? '').filter(text => !SMALL_EYE.includes(text))
 
 /** Every line of words the pane shows now. */
 export async function paneLines($: Engine): Promise<string[]> {
