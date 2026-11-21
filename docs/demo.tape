@@ -14,7 +14,7 @@ Type "for v in ${(k)parameters[(I)CLAUDE*]}; do unset $v; done; cd ~/learning/li
 Sleep 1s
 Show
 
-Type "claude --plugin-dir ~/learning/lie-eater" Enter
+Type "claude" Enter
 Sleep 9s
 Type "/lie-eater demo" Sleep 1s Enter
 Sleep 45s

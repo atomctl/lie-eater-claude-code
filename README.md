@@ -20,8 +20,6 @@ A "check" is one of your project's tests. Lie Eater is a mod for Claude Code. Wh
 
 ![The demo, recorded in a real session: the AI changes a check, the tests pass, Lie Eater says "don't trust done", the AI repairs it, and the result is "checked"](docs/demo.gif)
 
-The recording shows an earlier face of the pane; the results and the flow are the same.
-
 *A real session, recorded by a script ([docs/demo.tape](docs/demo.tape)) on 21 Nov 2026: the real mod and a real model, 50 seconds. Act 1 is staged by the demo: it asks the AI for the lazy fix on purpose.*
 
 ## The three results
