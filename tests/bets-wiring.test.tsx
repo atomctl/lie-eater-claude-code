@@ -96,7 +96,7 @@ test('a bet is taken, shown as open, and is not a recorded tool call', async ($,
   expect(has(lines, 'No tool calls yet.')).toBe(true)
 })
 
-test('a lost bet: the agent is told on the result; the person gets one toast from Munch, no sound, and Details', async ($, on) => {
+test('a lost bet: the agent is told on the result; the person gets one toast from Lie Eater, no sound, and Details', async ($, on) => {
   const seen = world(on, project())
   on('tool.call', failing)
 
@@ -107,7 +107,7 @@ test('a lost bet: the agent is told on the result; the person gets one toast fro
   expect(out.context?.at(-1)).toBe(
     'Lie Eater: bet #1 LOST. You said the next run will pass, 90% sure. The run: npm test → 3 failed, 31 passed in 2.10s.',
   )
-  expect(seen).toMatchObject({ toasts: ['Munch: "Sure of itself. Wrong. Ha." The AI bet "pass", 90% sure. The run failed.'], sounds: 0 })
+  expect(seen).toMatchObject({ toasts: ['Lie Eater: "Sure of itself. Wrong. Ha." The AI bet "pass", 90% sure. The run failed.'], sounds: 0 })
 
   const lines = await detailLines($)
   expect(has(lines, 'LOST · npm test → 3 failed, 31 passed in 2.10s')).toBe(true)
@@ -125,7 +125,7 @@ test('a bet on "fail" lost on a passing run: one toast, with the fact the other 
   await edit($)
   await betRun($, 'npm test', 'fail')
 
-  expect(seen).toMatchObject({ toasts: [0, 1].map(() => 'Munch: "Sure of itself. Wrong. Ha." The AI bet "fail", 55% sure. The run passed.'), sounds: 0 })
+  expect(seen).toMatchObject({ toasts: [0, 1].map(() => 'Lie Eater: "Sure of itself. Wrong. Ha." The AI bet "fail", 55% sure. The run passed.'), sounds: 0 })
 })
 
 test('a won bet: the agent hears it, and is told to call done', async ($, on) => {
@@ -244,7 +244,7 @@ test('while a bet is open the person may call it too; the pane keeps both scores
   await bash($, 'npm test')
   const lines = await detailLines($)
   // the AI lost its bet: one toast; the person's own call adds none
-  expect(seen.toasts).toEqual(['Munch: "Sure of itself. Wrong. Ha." The AI bet "pass", 90% sure. The run failed.'])
+  expect(seen.toasts).toEqual(['Lie Eater: "Sure of itself. Wrong. Ha." The AI bet "pass", 90% sure. The run failed.'])
   expect(has(lines, 'You 1 of 1 · the AI 0 of 1')).toBe(true)
   ui = await mount()
   expect(await ui.find({ key: 'call-pass' })).toBeUndefined()

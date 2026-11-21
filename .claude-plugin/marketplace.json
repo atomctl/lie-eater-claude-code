@@ -1,0 +1,11 @@
+{
+  "name": "lie-eater",
+  "owner": { "name": "Hachem Ahelbarra" },
+  "plugins": [
+    {
+      "name": "lie-eater",
+      "source": "./",
+      "description": "An AI can say 'done' after it made the checks easier. Lie Eater checks the proof before you believe it."
+    }
+  ]
+}

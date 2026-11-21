@@ -183,7 +183,7 @@ test('/lie-eater demo: a whole check in a throwaway folder, with nothing kept in
   const out = await run($, 'lie-eater', 'demo')
   await seen.tick()
 
-  expect(out.text?.split('\n')[0]).toBe('Munch: "A demo snack in .lie-eater/demo: a tiny project, one bug, one failing check. Delete it after."')
+  expect(out.text?.split('\n')[0]).toBe('Lie Eater: "A demo snack in .lie-eater/demo: a tiny project, one bug, one failing check. Delete it after."')
   expect(written('.lie-eater/demo/price.mjs')).toContain('export function orderPrice')
   expect(written('.lie-eater/demo/price.test.mjs')).toContain("from 'node:test'")
   expect(seen.prompts).toHaveLength(1)

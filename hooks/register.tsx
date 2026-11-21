@@ -4,7 +4,7 @@ import { BET_DESCRIPTION, BET_SCHEMA, BET_TOOL, BET_TOOL_FULL } from './lib/bets
 import { callIt, closeBets, refuseRun, settle, takeBet } from './lib/betting'
 import { loadLedger, refreshStatus } from './lib/house'
 import { DEMO_HINT } from './lib/demo'
-import { FACE_WIDTH, PIXEL_COLUMNS, PLAIN, faceRows } from './lib/munch'
+import { FEATHER_GOLD, SMALL_FEATHER } from './lib/feather'
 import { detailRows } from './lib/pane'
 import {
   DONE_DESCRIPTION,
@@ -20,7 +20,7 @@ import {
   doneCall,
   onRecord,
 } from './lib/referee'
-import { munchOf } from './lib/result'
+import { voiceOf } from './lib/result'
 import { paneClosed, paneView, remember, showDetails, startTurn } from './lib/store'
 
 const COMMANDS = [
@@ -32,6 +32,7 @@ const COMMANDS = [
 const OWN_COMMANDS: ReadonlySet<string> = new Set(COMMANDS.map(c => c.name))
 // The buttons row already shows `d: Details`: the hint names it only when no other key is there to name.
 const DETAILS_HINT = 'Press d, or type /lie-eater details.'
+const FEATHER_WIDTH = Math.max(...SMALL_FEATHER.map(row => row.length)) + 1
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -152,21 +153,13 @@ export const register: Register = on => {
     return out
   })
 
-  // The pane: Munch's face at the left of the result, one row of buttons, one dim hint; Details only when asked.
+  // The feather sits to the left of the result, above the buttons and hint.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const columns = e.props.bodyColumns
     const view = await paneView($)
     const [title, ...said] = view.now.screen
-    const munch = munchOf(view.now)
-    const isPixel = columns >= PIXEL_COLUMNS
-    const face = isPixel
-      ? faceRows(munch.face).map(spans => (
-          <Text>
-            {spans.map(({ text, ...colour }) => (colour.color === undefined ? text : <Text {...colour}>{text}</Text>))}
-          </Text>
-        ))
-      : PLAIN[munch.face].map(row => <Text>{row}</Text>)
+    const voice = voiceOf(view.now)
     const action = view.now.action
     const buttons = [
       ...(action === 'repair'
@@ -187,15 +180,15 @@ export const register: Register = on => {
       <Box flexDirection="column">
         {view.closing !== null && [...view.closing, ' '].map(line => <Text>{line}</Text>)}
         <Box flexDirection="row">
-          <Box flexDirection="column" width={isPixel ? FACE_WIDTH.pixel : FACE_WIDTH.plain} flexShrink={0}>
-            {face}
+          <Box flexDirection="column" width={FEATHER_WIDTH} flexShrink={0}>
+            {SMALL_FEATHER.map(row => <Text color={FEATHER_GOLD} mono>{row}</Text>)}
           </Box>
           <Box flexDirection="column" flexShrink={1}>
             <Text bold>{title ?? ''}</Text>
             {said.map(line => (
               <Text>{line}</Text>
             ))}
-            <Text dimColor>{`"${munch.says}"`}</Text>
+            <Text dimColor>{`"${voice.says}"`}</Text>
           </Box>
         </Box>
         <Box flexDirection="row">{buttons.flatMap((button, i) => (i === 0 ? [button] : [<Text> </Text>, button]))}</Box>

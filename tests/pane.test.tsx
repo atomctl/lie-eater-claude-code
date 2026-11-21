@@ -1,4 +1,4 @@
-// The pane gets out of the way: the face and the result, one row of buttons,
+// The pane gets out of the way: the feather and the result, one row of buttons,
 // one dim hint; Details only when asked; closed at the person's next prompt.
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
@@ -12,8 +12,8 @@ const SKIPPED = MATH.replace("it('adds'", "it.skip('adds'")
 const HINT_RED = 'Press f or a, or type /check or /accept.'
 const HINT_CHECK = 'Press c, or type /check.'
 const HINT_DETAILS = 'Press d, or type /lie-eater details.'
-const DEMO_HINT_ROW = 'Munch: "Now type /check, or press f. The AI puts the check back and fixes the bug."'
-const CAUGHT = 'Munch: "The checks were green both times. The first time a check had been changed to get there."'
+const DEMO_HINT_ROW = 'Lie Eater: "Now type /check, or press f. The AI puts the check back and fixes the bug."'
+const CAUGHT = 'Lie Eater: "The checks were green both times. The first time a check had been changed to get there."'
 
 type Node = { type: string; props?: Record<string, unknown>; children?: unknown[] }
 const isNode = (n: unknown): n is Node => typeof n === 'object' && n !== null && 'type' in n
@@ -23,7 +23,7 @@ const rowsOf = (text: string, columns: number) => Math.max(1, Math.ceil(text.len
 
 /**
  * The rows the pane's body takes at the kit's width, as a terminal wraps them:
- * the top block is as tall as the face or the wrapped lines beside it, a row
+ * the top block is as tall as the feather or the wrapped lines beside it, a row
  * of buttons is one row, a Text wraps at the body's width.
  */
 async function bodyRows($: Engine, bodyColumns = PANE.props.bodyColumns): Promise<number> {
@@ -32,10 +32,10 @@ async function bodyRows($: Engine, bodyColumns = PANE.props.bodyColumns): Promis
   await ui.unmount()
 
   return kids(root as Node).reduce((rows, child) => {
-    const [face, words] = kids(child)
-    if (child.type === 'Box' && child.props?.flexDirection === 'row' && face !== undefined && words !== undefined && typeof face.props?.width === 'number') {
-      const room = bodyColumns - face.props.width
-      return rows + Math.max(kids(face).length, kids(words).reduce((n, line) => n + rowsOf(textOf(line), room), 0))
+    const [feather, words] = kids(child)
+    if (child.type === 'Box' && child.props?.flexDirection === 'row' && feather !== undefined && words !== undefined && typeof feather.props?.width === 'number') {
+      const room = bodyColumns - feather.props.width
+      return rows + Math.max(kids(feather).length, kids(words).reduce((n, line) => n + rowsOf(textOf(line), room), 0))
     }
 
     return rows + (child.type === 'Text' ? rowsOf(textOf(child), bodyColumns) : 1)
@@ -51,7 +51,7 @@ async function small($: Engine, hint: string) {
   expect(lines.filter(l => l === 'Details' || l.startsWith('Full check:') || l.startsWith('Calls recorded') || l === 'No tool calls yet.')).toEqual([])
 }
 
-test('the default pane before any result: the face and the intro, the d button, the Details hint; no Details', async ($, on) => {
+test('the default pane before any result: the feather and the intro, the d button, the Details hint; no Details', async ($, on) => {
   world(on, project())
   await start($)
 

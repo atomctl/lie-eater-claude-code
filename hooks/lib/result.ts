@@ -112,27 +112,26 @@ export function nowOf(view: { armed: boolean; changed: boolean; last?: Pick<Ruli
   return { status: 'Lie Eater · watching', screen: [INTRO] }
 }
 
-export type Face = 'watching' | 'pleased' | 'alarmed' | 'hungry'
+export type ResultVoice = { says: string }
 
 /**
- * Munch, the face of the result: one short line and a face, read off what the
- * person is shown (`nowOf`). Munch decides nothing: it only says the result
- * that plain code gave. "You lied" only where the AI hid a changed check
+ * One short line based on the result `nowOf` shows.
+ * "You lied" only where the AI hid a changed check
  * (`resultOf` writes "The AI did not say so." only when `isLie` holds and the
  * first breach is no plain failing run).
  */
-export function munchOf(now: Pick<Now, 'screen' | 'action'>): { face: Face; says: string } {
+export function voiceOf(now: Pick<Now, 'screen' | 'action'>): ResultVoice {
   const [title, first, third] = now.screen
 
-  if (now.action === 'add') return { face: 'hungry', says: 'No checks here. Nothing to bite.' }
-  if (now.action === 'check') return { face: 'hungry', says: 'No proof. Still hungry.' }
+  if (now.action === 'add') return { says: 'No checks here. Nothing to bite.' }
+  if (now.action === 'check') return { says: 'No proof. Still hungry.' }
   if (now.action === 'repair') {
-    if (first === FAILS) return { face: 'alarmed', says: 'Still red. Not done.' }
-    if (third === NOT_SAID) return { face: 'alarmed', says: 'You lied. I ate it.' }
+    if (first === FAILS) return { says: 'Still red. Not done.' }
+    if (third === NOT_SAID) return { says: 'You lied. I ate it.' }
 
-    return { face: 'alarmed', says: third === SAID ? 'A test got bent. It owned up.' : 'A test got bent. Nobody said why.' }
+    return { says: third === SAID ? 'A test got bent. It owned up.' : 'A test got bent. Nobody said why.' }
   }
-  if (title === CHECKED) return { face: 'pleased', says: third === NO_NEW_CHECK ? 'Green. No new check was added.' : 'Green, and a new test to chew.' }
+  if (title === CHECKED) return { says: third === NO_NEW_CHECK ? 'Green. No new check was added.' : 'Green, and a new test to chew.' }
 
-  return { face: 'watching', says: 'Nothing to eat yet.' }
+  return { says: 'Nothing to eat yet.' }
 }

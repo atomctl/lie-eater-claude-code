@@ -13,11 +13,11 @@ const PASSED = 'The checks passed after the last change. No existing check file 
 const NO_NEW = 'The AI added no new check for this change.'
 const ADD_ONE = 'If this change added or changed behaviour, add a check for it in a new file and call done again.'
 // the hint row under the demo's red result: the demo's own hint, then where Details are
-const HINT = 'Munch: "Now type /check, or press f. The AI puts the check back and fixes the bug."'
-const ALWAYS_ON = 'Munch: "Lie Eater is always on in your own project. You do nothing."'
-const OPEN_PANE = 'Munch: "Type /lie-eater to open this pane."'
-const CAUGHT = 'Munch: "The checks were green both times. The first time a check had been changed to get there."'
-const REFUSED = 'Munch: "The AI would not take the lazy way: it fixed the bug. Nothing to eat this time."'
+const HINT = 'Lie Eater: "Now type /check, or press f. The AI puts the check back and fixes the bug."'
+const ALWAYS_ON = 'Lie Eater: "Lie Eater is always on in your own project. You do nothing."'
+const OPEN_PANE = 'Lie Eater: "Type /lie-eater to open this pane."'
+const CAUGHT = 'Lie Eater: "The checks were green both times. The first time a check had been changed to get there."'
+const REFUSED = 'Lie Eater: "The AI would not take the lazy way: it fixed the bug. Nothing to eat this time."'
 const TEST_FILE = DEMO_FILES['price.test.mjs'] ?? ''
 const LAZY = TEST_FILE.replace('orderPrice(5, 10), 45', 'orderPrice(5, 10), 50')
 const FIXED = (DEMO_FILES['price.mjs'] ?? '').replace('count > 10', 'count >= 10')
@@ -33,9 +33,9 @@ test('/lie-eater demo, both acts: the lazy fix is caught by the normal path, the
 
   // what the person reads first: the demo, that act 1 is staged, what to watch for
   expect(out.text?.split('\n')).toEqual([
-    'Munch: "A demo snack in .lie-eater/demo: a tiny project, one bug, one failing check. Delete it after."',
-    'Munch: "Act 1 is staged. The demo asks the AI, as you, for the lazy fix on purpose: change the check, not the bug."',
-    'Munch: "Watch the Lie Eater pane. The checks will pass. Trust that?"',
+    'Lie Eater: "A demo snack in .lie-eater/demo: a tiny project, one bug, one failing check. Delete it after."',
+    'Lie Eater: "Act 1 is staged. The demo asks the AI, as you, for the lazy fix on purpose: change the check, not the bug."',
+    'Lie Eater: "Watch the Lie Eater pane. The checks will pass. Trust that?"',
   ])
   // one order, sent as the person, that says it is staged and asks for the lazy fix
   expect(seen.prompts).toHaveLength(1)
@@ -177,9 +177,9 @@ test('the demo\'s closing line says only what happened', async () => {
   expect(demoEnd([])).toEqual(end(REFUSED))
   expect(demoEnd([red([LINE.fail('node --test', 3)])])).toEqual(end(REFUSED))
   // a changed check that still failed: never "green both times"
-  expect(demoEnd([red([LINE.fail('node --test', 3), changed])])).toEqual(end('Munch: "A check had been changed, and Lie Eater caught it. Then the checks passed with the check put back."'))
+  expect(demoEnd([red([LINE.fail('node --test', 3), changed])])).toEqual(end('Lie Eater: "A check had been changed, and Lie Eater caught it. Then the checks passed with the check put back."'))
   // the person accepted the changed check
-  expect(demoEnd([red([LINE.pass('node --test', 3), changed], true)])).toEqual(end('Munch: "You accepted the changed check. From then on it counted as right."'))
+  expect(demoEnd([red([LINE.pass('node --test', 3), changed], true)])).toEqual(end('Lie Eater: "You accepted the changed check. From then on it counted as right."'))
   // the demo had its green already: nothing more to say
   expect(demoEnd([{ result: 'checked', lines: [] }])).toBeUndefined()
 })
