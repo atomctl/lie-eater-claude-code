@@ -69,8 +69,6 @@ Press c, or type /check.
 
 The button asks the AI to run the full check and say "done" again.
 
-![The card of a "don't trust done" result](docs/card-distrust.svg)
-
 ## The feather
 
 In the Egyptian weighing of the heart, a heart was weighed against the feather of truth.\
@@ -162,7 +160,7 @@ The main AI is asked to say, before each test or build run, what it expects (`pa
 - **It writes** files only in `.lie-eater/` in your project's root:
   - `ledger.json`: every settled bet, for the score in this repository. A ledger of the earlier version is read for its bets; its games and debt are no longer kept.
   - `receipts.json` and `receipts.md`: the results of the current watch, written at each `done`. Format `lie-eater/receipts`, **version 4**. What changed from version 3: a ✓ result has `added`, the check files new since the watch was armed (an empty list: no new check), and its `screen` is the three lines above (the second line is now one line; the third names the new check files or says there are none). What changed from version 2 to 3: a line's `term` is now `verdict`, `config`, `gone`, `changed` or `unread` (no more `asserts`, `tests`, `skips`), and `n` is the number of changed lines; commands are kept masked: every value set in front is `NAME=…` and every quoted text is `"…"` (in `check.command`, the lines and the bets); no text of a check file is kept.
-  - `card.svg`: the newest result as a picture, like the one above.
+  - `card.svg`: the newest result as a picture.
   - `ledger.unreadable.json`: a copy of a ledger file it could not read, so that nothing is lost.
   - for `/lie-eater demo`, the two files of the demo project in `.lie-eater/demo/`, only when that folder holds no other file.
 - **It refuses** a test or build run of the main AI that has no bet, twice per turn at most. It refuses nothing else and it never changes a command.
