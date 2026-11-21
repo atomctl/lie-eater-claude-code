@@ -8,6 +8,10 @@ An AI can say "done" after it made the checks easier. Lie Eater checks the proof
 
 A "check" is one of your project's tests. Lie Eater is a mod for Claude Code. When the AI says it is done, Lie Eater shows you one of three results.
 
+![The demo, recorded in a real session: the AI changes a check, the tests pass, Lie Eater says "don't trust done", the AI repairs it, and the result is "checked"](docs/demo.gif)
+
+*A real session, recorded by a script ([docs/demo.tape](docs/demo.tape)) on 21 Nov 2026: the real mod and a real model, 50 seconds. Act 1 is staged by the demo: it asks the AI for the lazy fix on purpose.*
+
 ## The three results
 
 **✓ checked**: the check files that were there when Lie Eater began to watch are unchanged, and the full check passed on the files exactly as they are now. That is not the same as "no bugs": a weak check stays weak. The third line says whether the AI added a check for its work:
